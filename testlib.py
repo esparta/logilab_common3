@@ -17,6 +17,7 @@ Command line options:
 -t: testdir -- directory where the tests will be found
 -x: exclude -- add a test to exclude
 -p: profile -- profiled execution
+-c: capture -- capture standard out/err during tests
 
 If no non-option arguments are present, prefixes used are 'test',
 'regrtest', 'smoketest' and 'unittest'.
@@ -27,7 +28,8 @@ from __future__ import nested_scopes
 __revision__ = "$Id: testlib.py,v 1.47 2006-04-19 10:26:15 adim Exp $"
 
 import sys
-import os
+import os, os.path as osp
+import time
 import getopt
 import traceback
 import unittest
@@ -74,7 +76,7 @@ def main(testdir=os.getcwd()):
     """
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], 'vqx:t:p')
+        opts, args = getopt.getopt(sys.argv[1:], 'vqx:t:pc')
     except getopt.error, msg:
         print msg
         print __doc__
@@ -83,11 +85,12 @@ def main(testdir=os.getcwd()):
     quiet = 0
     profile = 0
     exclude = []
+    capture = False
     for o, a in opts:
         if o == '-v':
             verbose = verbose+1
         elif o == '-q':
-            quiet = 1;
+            quiet = 1
             verbose = 0
         elif o == '-x':
             exclude.append(a)
@@ -95,6 +98,8 @@ def main(testdir=os.getcwd()):
             testdir = a
         elif o == '-p':
             profile = 1
+        elif o == '-c':
+            capture = True
         elif o == '-h':
             print __doc__
             sys.exit(0)
@@ -116,15 +121,21 @@ def main(testdir=os.getcwd()):
         print >> sys.stderr, '** profiled run'
         from hotshot import Profile
         prof = Profile('stones.prof')
+        start_time, start_ctime = time.time(), time.clock()
         good, bad, skipped, all_result = prof.runcall(run_tests, tests, quiet,
-                                                      verbose)
+                                                      verbose, None, capture)
+        end_time, end_ctime = time.time(), time.clock()
         prof.close()
     else:
-        good, bad, skipped, all_result = run_tests(tests, quiet, verbose)
+        start_time, start_ctime = time.time(), time.clock()
+        good, bad, skipped, all_result = run_tests(tests, quiet, verbose, None, capture)
+        end_time, end_ctime = time.time(), time.clock()
     if not quiet:
         print '*'*80
         if all_result:
-            print 'Ran %s test cases' % all_result.testsRun,
+            print 'Ran %s test cases in %0.2fs (%0.2fs CPU)' % (all_result.testsRun,
+                                                                end_time - start_time,
+                                                                end_ctime - start_ctime), 
             if all_result.errors:
                 print ', %s errors' % len(all_result.errors),
             if all_result.failures:
@@ -149,7 +160,7 @@ def main(testdir=os.getcwd()):
         stats.print_stats(30)
     sys.exit(len(bad) + len(skipped))
 
-def run_tests(tests, quiet, verbose, runner=None):
+def run_tests(tests, quiet, verbose, runner=None, capture=False):
     """ execute a list of tests
     return a 3-uple with :
        _ the list of passed tests
@@ -165,7 +176,7 @@ def run_tests(tests, quiet, verbose, runner=None):
             print 
             print '-'*80
             print "Executing", test
-        result = run_test(test, verbose, runner)
+        result = run_test(test, verbose, runner, capture)
         if type(result) is type(''):
             # an unexpected error occured
             skipped.append( (test, result))
@@ -208,7 +219,7 @@ def find_tests(testdir,
     return tests
 
 
-def run_test(test, verbose, runner=None):
+def run_test(test, verbose, runner=None, capture=False):
     """
     Run a single test.
 
@@ -227,7 +238,7 @@ def run_test(test, verbose, runner=None):
             loader = unittest.TestLoader()
             suite = loader.loadTestsFromModule(m)
         if runner is None:
-            runner = SkipAwareTextTestRunner() # verbosity=0)
+            runner = SkipAwareTextTestRunner(capture=capture) # verbosity=0)
         return runner.run(suite)
     except KeyboardInterrupt, v:
         raise KeyboardInterrupt, v, sys.exc_info()[2]
@@ -296,20 +307,21 @@ from cStringIO import StringIO
 
 class SkipAwareTestResult(unittest._TextTestResult):
 
-    def __init__(self, stream, descriptions, verbosity, exitfirst=False):
+    def __init__(self, stream, descriptions, verbosity,
+                 exitfirst=False, capture=False):
         unittest._TextTestResult.__init__(self, stream, descriptions, verbosity)
         self.skipped = []
         self.debuggers = []
         self.descrs = []
         self.exitfirst = exitfirst
-
+        self.capture = capture
+        
     def _create_pdb(self, test_descr):
         self.debuggers.append(Debugger(sys.exc_info()[2]))
         self.descrs.append(test_descr)
         
     def addError(self, test, err):
         exc_type, exc, tcbk = err
-        # hack to avoid overriding the whole __call__ machinery in TestCase
         if exc_type == TestSkipped:
             self.addSkipped(test, exc)
         else:
@@ -341,16 +353,41 @@ class SkipAwareTestResult(unittest._TextTestResult):
             self.stream.writeln("%s: %s" % ('SKIPPED', self.getDescription(test)))
             self.stream.writeln("\t%s" % err)
 
+    def printErrorList(self, flavour, errors):
+        for test, err in errors:
+            self.stream.writeln(self.separator1)
+            self.stream.writeln("%s: %s" % (flavour,self.getDescription(test)))
+            self.stream.writeln(self.separator2)
+            self.stream.writeln("%s" % err)
+            if self.capture:
+                output, errput = test.captured_output()
+                if output:
+                    self.stream.writeln(self.separator2)
+                    self.stream.writeln("captured stdout".center(len(self.separator2)))
+                    self.stream.writeln(self.separator2)
+                    self.stream.writeln(output)
+                else:
+                    self.stream.writeln('no stdout'.center(len(self.separator2)))
+                if errput:
+                    self.stream.writeln(self.separator2)
+                    self.stream.writeln("captured stderr".center(len(self.separator2)))
+                    self.stream.writeln(self.separator2)
+                    self.stream.writeln(errput)
+                else:
+                    self.stream.writeln('no stderr'.center(len(self.separator2)))
+
 
 class SkipAwareTextTestRunner(unittest.TextTestRunner):
 
-    def __init__(self, stream=sys.stderr, verbosity=1, exitfirst=False):
+    def __init__(self, stream=sys.stderr, verbosity=1,
+                 exitfirst=False, capture=False):
         unittest.TextTestRunner.__init__(self, stream=stream, verbosity=verbosity)
         self.exitfirst = exitfirst
-
+        self.capture = capture
+        
     def _makeResult(self):
-        return SkipAwareTestResult(self.stream, self.descriptions,
-                                   self.verbosity, self.exitfirst)
+        return SkipAwareTestResult(self.stream, self.descriptions, self.verbosity,
+                                   self.exitfirst, self.capture)
 
 
 class keywords(dict):
@@ -460,6 +497,7 @@ Options:
   -v, --verbose    Verbose output
   -i, --pdb        Enable test failure inspection
   -x, --exitfirst  Exit on first failure
+  -c, --capture    Captures and prints standard out/err only on errors
   -q, --quiet      Minimal output
 
 Examples:
@@ -477,10 +515,11 @@ Examples:
     def parseArgs(self, argv):
         self.pdbmode = False
         self.exitfirst = False
+        self.capture = False
         import getopt
         try:
-            options, args = getopt.getopt(argv[1:], 'hHvixq',
-                                          ['help','verbose','quiet', 'pdb', 'exitfirst'])
+            options, args = getopt.getopt(argv[1:], 'hHvixqc',
+                                          ['help','verbose','quiet', 'pdb', 'exitfirst', 'capture'])
             for opt, value in options:
                 if opt in ('-h','-H','--help'):
                     self.usageExit()
@@ -492,6 +531,8 @@ Examples:
                     self.verbosity = 0
                 if opt in ('-v','--verbose'):
                     self.verbosity = 2
+                if opt in ('-c', '--capture'):
+                    self.capture = True
             if len(args) == 0 and self.defaultTest is None:
                 self.test = self.testLoader.loadTestsFromModule(self.module)
                 return
@@ -507,7 +548,8 @@ Examples:
 
     def runTests(self):
         self.testRunner = SkipAwareTextTestRunner(verbosity=self.verbosity,
-                                                  exitfirst=self.exitfirst)
+                                                  exitfirst=self.exitfirst,
+                                                  capture=self.capture)
         result = self.testRunner.run(self.test)
         if os.environ.get('PYDEBUG'):
             warn("PYDEBUG usage is deprecated, use -i / --pdb instead", DeprecationWarning)
@@ -515,6 +557,82 @@ Examples:
         if result.debuggers and self.pdbmode:
             start_interactive_mode(result.debuggers, result.descrs)
         sys.exit(not result.wasSuccessful())
+
+
+
+
+class FDCapture: 
+    """adapted from py lib (http://codespeak.net/py)
+    Capture IO to/from a given os-level filedescriptor.
+    """
+    def __init__(self, fd, attr='stdout'):
+        self.targetfd = fd
+        self.tmpfile = os.tmpfile() # self.maketempfile()
+        # save original file descriptor
+        self._savefd = os.dup(fd)
+        # override original file descriptor
+        os.dup2(self.tmpfile.fileno(), fd)
+        # also modify sys module directly
+        self.oldval = getattr(sys, attr)
+        setattr(sys, attr, self.tmpfile)
+        self.attr = attr
+    
+##     def maketempfile(self):
+##         tmpf = os.tmpfile()
+##         fd = os.dup(tmpf.fileno())
+##         newf = os.fdopen(fd, tmpf.mode, 0) # No buffering
+##         tmpf.close()
+##         return newf
+        
+    def restore(self):
+        """restore original fd and returns captured output"""
+        # hack hack hack
+        self.tmpfile.flush()
+        try:
+            ref_file = getattr(sys, '__%s__' % self.attr)
+            ref_file.flush()
+        except AttributeError:
+            pass
+        if hasattr(self.oldval, 'flush'):
+            self.oldval.flush()
+        # restore original file descriptor
+        os.dup2(self._savefd, self.targetfd)
+        # restore sys module
+        setattr(sys, self.attr, self.oldval)
+        # close backup descriptor
+        os.close(self._savefd)
+        # go to beginning of file and read it
+        self.tmpfile.seek(0)
+        return self.tmpfile.read()
+
+
+def _capture(which='stdout'):
+    """private method, should not be called directly
+    (cf. capture_stdout() and capture_stderr())
+    """
+    assert which in ('stdout', 'stderr'), "Can only capture stdout or stderr, not %s" % which
+    if which == 'stdout':
+        fd = 1
+    else:
+        fd = 2
+    return FDCapture(fd, which)
+    
+def capture_stdout():
+    """captures the standard output
+
+    returns a handle object which has a `restore()` method.
+    The restore() method returns the captured stdout and restores it
+    """
+    return _capture('stdout')
+        
+def capture_stderr():
+    """captures the standard error output
+
+    returns a handle object which has a `restore()` method.
+    The restore() method returns the captured stderr and restores it
+    """
+    return _capture('stderr')
+
 
 def unittest_main():
     """use this functon if you want to have the same functionality
@@ -562,24 +680,49 @@ class TestCase(unittest.TestCase):
         if sys.version_info >= (2, 5):
             self.__exc_info = self._exc_info
             self.__testMethodName = self._testMethodName
+        self._captured_stdout = ""
+        self._captured_stderr = ""
             
-        
-    
+    def captured_output(self):
+        return self._captured_stdout, self._captured_stderr
+
+    def _start_capture(self):
+        if self.capture:
+            self._out, self._err = capture_stdout(), capture_stderr()
+
+    def _stop_capture(self):
+        if self.capture:
+            out, err = self._out.restore(), self._err.restore()
+            self._captured_stdout += out
+            self._captured_stderr += err
+
+
+    def quiet_run(self, result, func, *args, **kwargs):
+        self._start_capture()
+        try:
+            func(*args, **kwargs)
+        except KeyboardInterrupt:
+            self._stop_capture()
+            raise
+        except:
+            self._stop_capture()
+            result.addError(self, self.__exc_info())
+            return False
+        self._stop_capture()
+        return True
+
     def __call__(self, result=None):
         """rewrite TestCase.__call__ to support generative tests
         This is mostly a copy/paste from unittest.py (i.e same
         variable names, same logic, except for the generative tests part)
         """
-        if result is None: result = self.defaultTestResult()
+        if result is None:
+            result = self.defaultTestResult()
+        self.capture = getattr(result, 'capture', False)
         result.startTest(self)
         testMethod = getattr(self, self.__testMethodName)
         try:
-            try:
-                self.setUp()
-            except KeyboardInterrupt:
-                raise
-            except:
-                result.addError(self, self.__exc_info())
+            if not self.quiet_run(result, self.setUp):
                 return
             # generative tests
             if is_generator(testMethod.im_func):
@@ -587,17 +730,14 @@ class TestCase(unittest.TestCase):
             else:
                 status = self._proceed(result, testMethod)
                 success = (status == 0)
-            try:
-                self.tearDown()
-            except KeyboardInterrupt:
-                raise
-            except:
-                result.addError(self, self.__exc_info())
-                success = False
+            if not self.quiet_run(result, self.tearDown):
+                return
             if success:
                 result.addSuccess(self)
         finally:
             result.stopTest(self)
+
+
             
     def _proceed_generative(self, result, testfunc, args=()):
         # cancel startTest()'s increment
@@ -634,15 +774,20 @@ class TestCase(unittest.TestCase):
         for tearDown to be successfully executed to declare the test as
         successful
         """
+        self._start_capture()
         kwargs = kwargs or {}
         try:
             testfunc(*args, **kwargs)
+            self._stop_capture()
         except self.failureException:
+            self._stop_capture()
             result.addFailure(self, self.__exc_info())
             return 1
         except KeyboardInterrupt:
+            self._stop_capture()
             raise
         except:
+            self._stop_capture()
             result.addError(self, self.__exc_info())
             return 2
         return 0
@@ -864,3 +1009,39 @@ def mock_object(**params):
     """
     return type('Mock', (), params)()
 
+
+def create_files(paths, chroot):
+    """creates directories and files found in <path>
+
+    :param path: list of relative paths to files or directories
+    :param chroot: the root directory in which paths will be created
+
+    >>> from os.path import isdir, isfile
+    >>> isdir('/tmp/a')
+    False
+    >>> create_files(['a/b/foo.py', 'a/b/c/', 'a/b/c/d/e.py'], '/tmp')
+    >>> isdir('/tmp/a')
+    True
+    >>> isdir('/tmp/a/b/c')
+    True
+    >>> isfile('/tmp/a/b/c/d/e.py')
+    True 
+    >>> isfile('/tmp/a/b/foo.py')
+    True
+    """
+    dirs, files = set(), set()
+    for path in paths:
+        path = osp.join(chroot, path)
+        filename = osp.basename(path)
+        # path is a directory path
+        if filename == '':
+            dirs.add(path)
+        # path is a filename path
+        else:
+            dirs.add(osp.dirname(path))
+            files.add(path)
+    for dirpath in dirs:
+        if not osp.isdir(dirpath):
+            os.makedirs(dirpath)
+    for filepath in files:
+        file(filepath, 'w').close()

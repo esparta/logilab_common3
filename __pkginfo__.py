@@ -18,7 +18,7 @@
 __revision__ = "$Id: __pkginfo__.py,v 1.58 2006-04-25 12:08:52 syt Exp $"
 
 modname = 'common'
-numversion = (0, 17, 0)
+numversion = (0, 18, 0)
 version = '.'.join([str(num) for num in numversion])
 
 license = 'GPL'
@@ -54,6 +54,6 @@ subpackage_master = True
 
 from os.path import join
 include_dirs = [join('test', 'data')]
-pyversions = ['2.2', '2.3', '2.4']
+pyversions = ['2.3', '2.4']
 debian_maintainer = 'Alexandre Fayolle'
 debian_maintainer_email = 'afayolle@debian.org'

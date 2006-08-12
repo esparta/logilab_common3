@@ -3,17 +3,23 @@
 __revision__ = '$Id: unittest_testlib.py,v 1.5 2006-02-09 22:37:46 nico Exp $'
 
 import unittest
-from os.path import join, dirname
+import os
+import sys
+from os.path import join, dirname, isdir, isfile
 from cStringIO import StringIO
+import tempfile
+import shutil
+
+from logilab.common.compat import sorted
 
 try:
     __file__
 except NameError:
-    import sys
     __file__ = sys.argv[0]
     
 from logilab.common.testlib import TestCase, unittest_main, SkipAwareTextTestRunner
-from logilab.common.testlib import mock_object, NonStrictTestLoader
+from logilab.common.testlib import mock_object, NonStrictTestLoader, create_files
+from logilab.common.testlib import capture_stdout
 
 class MockTestCase(TestCase):
     def __init__(self):
@@ -29,6 +35,31 @@ class UtilTC(TestCase):
         obj = mock_object(foo='bar', baz='bam')
         self.assertEquals(obj.foo, 'bar')
         self.assertEquals(obj.baz, 'bam')
+
+
+    def test_create_files(self):
+        chroot = tempfile.mkdtemp()
+        path_to = lambda path: join(chroot, path)
+        dircontent = lambda path: sorted(os.listdir(join(chroot, path)))
+        try:
+            self.failIf(isdir(path_to('a/')))
+            create_files(['a/b/foo.py', 'a/b/c/', 'a/b/c/d/e.py'], chroot)
+            # make sure directories exist
+            self.failUnless(isdir(path_to('a')))
+            self.failUnless(isdir(path_to('a/b')))
+            self.failUnless(isdir(path_to('a/b/c')))
+            self.failUnless(isdir(path_to('a/b/c/d')))
+            # make sure files exist
+            self.failUnless(isfile(path_to('a/b/foo.py')))
+            self.failUnless(isfile(path_to('a/b/c/d/e.py')))
+            # make sure only asked files were created
+            self.assertEquals(dircontent('a'), ['b'])
+            self.assertEquals(dircontent('a/b'), ['c', 'foo.py'])
+            self.assertEquals(dircontent('a/b/c'), ['d'])
+            self.assertEquals(dircontent('a/b/c/d'), ['e.py'])
+        finally:
+            shutil.rmtree(chroot)
+            
 
 class TestlibTC(TestCase):
 
@@ -289,7 +320,83 @@ class TestLoaderTC(TestCase):
             collected = self.loader.loadTestsFromName(pattern, self.module)
             yield self.assertEquals, len(collected), expected_count
 
+
+
+
+def bootstrap_print(msg, output=sys.stdout):
+    """sys.stdout will be evaluated at function parsing time"""
+    # print msg
+    output.write(msg)
+
+class OutErrCaptureTC(TestCase):
     
+    def setUp(self):
+        sys.stdout = sys.stderr = StringIO()
+        self.runner = SkipAwareTextTestRunner(stream=StringIO(), exitfirst=True, capture=True)
+
+    def tearDown(self):
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
+
+    def test_stdout_capture(self):
+        class FooTC(TestCase):
+            def test_stdout(self):
+                print "foo"
+                self.assert_(False)
+        test = FooTC('test_stdout')
+        result = self.runner.run(test)
+        captured_out, captured_err = test.captured_output()
+        self.assertEqual(captured_out.strip(), "foo")
+        self.assertEqual(captured_err.strip(), "") 
+       
+    def test_stderr_capture(self):
+        class FooTC(TestCase):
+            def test_stderr(self):
+                print >> sys.stderr, "foo"
+                self.assert_(False)
+        test = FooTC('test_stderr')
+        result = self.runner.run(test)
+        captured_out, captured_err = test.captured_output()
+        self.assertEqual(captured_out.strip(), "")
+        self.assertEqual(captured_err.strip(), "foo") 
+        
+        
+    def test_both_capture(self):
+        class FooTC(TestCase):
+            def test_stderr(self):
+                print >> sys.stderr, "foo"
+                print "bar"
+                self.assert_(False)
+        test = FooTC('test_stderr')
+        result = self.runner.run(test)
+        captured_out, captured_err = test.captured_output()
+        self.assertEqual(captured_out.strip(), "bar")
+        self.assertEqual(captured_err.strip(), "foo") 
+        
+    def test_no_capture(self):
+        class FooTC(TestCase):
+            def test_stderr(self):
+                print >> sys.stderr, "foo"
+                print "bar"
+                self.assert_(False)
+        test = FooTC('test_stderr')
+        # this runner should not capture stdout / stderr
+        runner = SkipAwareTextTestRunner(stream=StringIO(), exitfirst=True)
+        result = runner.run(test)
+        captured_out, captured_err = test.captured_output()
+        self.assertEqual(captured_out.strip(), "")
+        self.assertEqual(captured_err.strip(), "") 
+        
+
+    def test_capture_core(self):
+        # output = capture_stdout()
+        # bootstrap_print("hello", output=sys.stdout)
+        # self.assertEquals(output.restore(), "hello")
+        output = capture_stdout()
+        bootstrap_print("hello")
+        self.assertEquals(output.restore(), "hello")
+        
+
 if __name__ == '__main__':
     unittest_main()
 
