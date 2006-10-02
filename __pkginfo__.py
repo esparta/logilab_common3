@@ -16,7 +16,7 @@
 """logilab.common packaging information"""
 
 modname = 'common'
-numversion = (0, 19, 1)
+numversion = (0, 19, 2)
 version = '.'.join([str(num) for num in numversion])
 
 license = 'GPL'
@@ -53,6 +53,6 @@ subpackage_master = True
 scripts = ('bin/pytest',)
 from os.path import join
 include_dirs = [join('test', 'data')]
-pyversions = ['2.3', '2.4']
+pyversions = ['2.3', '2.4', '2.5']
 debian_maintainer = 'Alexandre Fayolle'
 debian_maintainer_email = 'afayolle@debian.org'

@@ -207,8 +207,8 @@ def find_tests(testdir,
         if not suffix or name.endswith(suffix):
             for prefix in prefixes:
                 if name.startswith(prefix):
-                    if remove_suffix:
-                        name = name.rstrip(suffix)
+                    if remove_suffix and name.endswith(suffix):
+                        name = name[:-len(suffix)]
                     if name not in excludes:
                         tests.append(name)
     tests.sort()
@@ -904,6 +904,12 @@ class TestCase(unittest.TestCase):
     def assertFileEqual(self, fname1, fname2, junk=(' ', '\t')):
         """compares two files using difflib"""
         self.assertStreamEqual(file(fname1), file(fname2), junk)
+            
+    def assertIsInstance(self, obj, klass, msg=None):
+        """compares two files using difflib"""
+        if msg is None:
+            msg = '%s is not an instance of %s' % (obj, klass)
+        self.assert_(isinstance(obj, klass), msg)
 
 
 import doctest
