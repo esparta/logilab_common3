@@ -3,6 +3,7 @@ ChangeLog for logilab.common
 
  --
     * fileutils: new remove_dead_links function
+    * date: add missing strptime import
 
 2006-11-01  --  0.20.1
     * umessage:
