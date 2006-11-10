@@ -21,6 +21,12 @@ def message_from_file(fd):
     except email.Errors.MessageParseError:
         return ''
     
+def message_from_string(string):
+    try:
+        return UMessage(email.message_from_string(string))
+    except email.Errors.MessageParseError:
+        return ''
+    
 class UMessage:
     """Encapsulates an email.Message instance and returns only unicode objects"""
 
@@ -47,7 +53,11 @@ class UMessage:
                 return [UMessage(msg) for msg in payload]
             if message.get_content_maintype() != 'text':
                 return payload
-            return unicode(payload or '', message.get_charset() or 'iso-8859-15', 'replace')
+
+            charset = message.get_content_charset() or 'iso-8859-1'
+            if charset == 'unknown-8bit':
+                charset = 'iso-8859-1'
+            return unicode(payload or '', charset)
         else:
             payload = UMessage(message.get_payload(index, decode))
         return payload

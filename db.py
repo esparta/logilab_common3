@@ -19,6 +19,12 @@
 import sys
 import re
 
+try:
+    from mx.DateTime import DateTimeType, DateTimeDeltaType, strptime
+    HAS_MX_DATETIME = True
+except:
+    HAS_MX_DATETIME = False
+    
 __all__ = ['get_dbapi_compliant_module', 
            'get_connection', 'set_prefered_driver',
            'PyConnection', 'PyCursor',
@@ -205,8 +211,26 @@ class _PsycopgAdapter(DBAPIAdapter):
 class _Psycopg2Adapter(_PsycopgAdapter):
     """Simple Psycopg2 Adapter to DBAPI (cnx_string differs from classical ones)
     """
-    BOOLEAN = 16 # XXX
-    
+    BOOLEAN = 16 # XXX see additional types in psycopg2.extensions
+    def __init__(self, native_module, pywrap=False):
+        DBAPIAdapter.__init__(self, native_module, pywrap)
+        self._init_psycopg2()
+
+    def _init_psycopg2(self):
+        """initialize psycopg2 to use mx.DateTime for date and timestamps
+        instead for datetime.datetime"""
+        psycopg2 = self._native_module
+        if hasattr(psycopg2, '_lc_initialized'):
+            return
+        psycopg2._lc_initialized = 1
+        # use mxDateTime instead of datetime if available
+        if HAS_MX_DATETIME:
+            from psycopg2 import extensions
+            extensions.register_type(psycopg2._psycopg.MXDATETIME)
+            extensions.register_type(psycopg2._psycopg.MXINTERVAL)
+            extensions.register_type(psycopg2._psycopg.MXDATE)
+            extensions.register_type(psycopg2._psycopg.MXTIME)
+        
 
 class _PgsqlAdapter(DBAPIAdapter):
     """Simple pyPgSQL Adapter to DBAPI
@@ -236,7 +260,6 @@ class _PySqlite2Adapter(DBAPIAdapter):
     """
     def __init__(self, native_module, pywrap=False):
         DBAPIAdapter.__init__(self, native_module, pywrap)
-        from pysqlite2 import _sqlite
         self._init_pysqlite2()
         # no type code in pysqlite2
         self.BINARY = 'XXX'
@@ -247,58 +270,52 @@ class _PySqlite2Adapter(DBAPIAdapter):
     def _init_pysqlite2(self):
         """initialize pysqlite2 to use mx.DateTime for date and timestamps"""
         sqlite = self._native_module
-        if hasattr(sqlite, '_mx_initialized'):
+        if hasattr(sqlite, '_lc_initialized'):
             return
+        sqlite._lc_initialized = 1
 
-        from mx.DateTime import DateTimeType, DateTimeDeltaType, strptime
+        # bytea type handling
         from StringIO import StringIO
-
-        def adapt_mxdatetime(mxd):
-            return mxd.strftime('%Y-%m-%d %H:%M:%S')
-        sqlite.register_adapter(DateTimeType, adapt_mxdatetime)
-
-        def adapt_mxdatetimedelta(mxd):
-            return mxd.strftime('%H:%M:%S')
-        sqlite.register_adapter(DateTimeDeltaType, adapt_mxdatetimedelta)
-
-        def convert_mxdate(ustr):
-            return strptime(ustr, '%Y-%m-%d %H:%M:%S')
-        sqlite.register_converter('date', convert_mxdate)
-
-        def convert_mxdatetime(ustr):
-            return strptime(ustr, '%Y-%m-%d %H:%M:%S')
-        sqlite.register_converter('timestamp', convert_mxdatetime)
-
-        def convert_mxtime(ustr):
-            try:
-                return strptime(ustr, '%H:%M:%S')
-            except:
-                # DateTime used as Time?
-                return strptime(ustr, '%Y-%m-%d %H:%M:%S')
-        sqlite.register_converter('time', convert_mxtime)
-        
-
         def adapt_bytea(data):
             return data.getvalue()
         sqlite.register_adapter(StringIO, adapt_bytea)
-
         def convert_bytea(data):
             return StringIO(data)
         sqlite.register_converter('bytea', convert_bytea)
 
+        # boolean type handling
         def convert_boolean(ustr):
             if ustr.upper() in ('F', 'FALSE'):
                 return False
             return True
         sqlite.register_converter('boolean', convert_boolean)
-
         def adapt_boolean(bval):
             return str(bval).upper()
         sqlite.register_adapter(bool, adapt_boolean)
-        
-        # import pysqlite2.dbapi2 as sqlite
-        sqlite._mx_initialized = 1
 
+        # date/time types handling
+        if HAS_MX_DATETIME:
+            def adapt_mxdatetime(mxd):
+                return mxd.strftime('%Y-%m-%d %H:%M:%S')
+            sqlite.register_adapter(DateTimeType, adapt_mxdatetime)
+            def adapt_mxdatetimedelta(mxd):
+                return mxd.strftime('%H:%M:%S')
+            sqlite.register_adapter(DateTimeDeltaType, adapt_mxdatetimedelta)
+            def convert_mxdate(ustr):
+                return strptime(ustr, '%Y-%m-%d %H:%M:%S')
+            sqlite.register_converter('date', convert_mxdate)
+            def convert_mxdatetime(ustr):
+                return strptime(ustr, '%Y-%m-%d %H:%M:%S')
+            sqlite.register_converter('timestamp', convert_mxdatetime)
+            def convert_mxtime(ustr):
+                try:
+                    return strptime(ustr, '%H:%M:%S')
+                except:
+                    # DateTime used as Time?
+                    return strptime(ustr, '%Y-%m-%d %H:%M:%S')
+            sqlite.register_converter('time', convert_mxtime)
+        # XXX else use datetime.datetime
+    
             
     def connect(self, host='', database='', user='', password='', port=None):
         """Handles sqlite connexion format"""
@@ -389,10 +406,15 @@ class _GenericAdvFuncHelper:
         """return the system database for the given driver"""
         raise NotImplementedError('not supported by this DBMS')
     
-    def backup_command(self, dbname, dbhost, dbuser, dbpassword, backupfile):
+    def backup_command(self, dbname, dbhost, dbuser, dbpassword, backupfile,
+                       keepownership=True):
         """return a command to backup the given database"""
         raise NotImplementedError('not supported by this DBMS')
-
+    
+    def restore_commands(self, dbname, dbhost, dbuser, backupfile,
+                         encoding='UTF8', keepownership=True, drop=True):
+        raise NotImplementedError('not supported by this DBMS')
+    
     # helpers to standardize SQL according to the database
     
     def sql_current_date(self):
@@ -434,19 +456,22 @@ class _PGAdvFuncHelper(_GenericAdvFuncHelper):
         """return the system database for the given driver"""
         return 'template1'
     
-    def backup_command(self, dbname, dbhost, dbuser, backupfile):
+    def backup_command(self, dbname, dbhost, dbuser, backupfile,
+                       keepownership=True):
         """return a command to backup the given database"""
         cmd = ['pg_dump -Fc']
         if dbhost:
             cmd.append('--host=%s' % dbhost)
         if dbuser:
             cmd.append('--username=%s' % dbuser)
+        if not keepownership:
+            cmd.append('--no-owner')
         cmd.append('--file=%s' % backupfile)
         cmd.append(dbname)
         return ' '.join(cmd)
     
     def restore_commands(self, dbname, dbhost, dbuser, backupfile,
-                         encoding='UTF8', drop=True):
+                         encoding='UTF8', keepownership=True, drop=True):
         """return a command to restore a backup the given database"""
         cmds = []
         if drop:
@@ -458,6 +483,8 @@ class _PGAdvFuncHelper(_GenericAdvFuncHelper):
         cmds.append(' '.join(cmd))
         cmd = dbcmd('pg_restore -Fc', dbhost, dbuser)
         cmd.append('--dbname %s' % dbname)
+        if not keepownership:
+            cmd.append('--no-owner')
         cmd.append(backupfile)
         cmds.append(' '.join(cmd))
         return cmds
@@ -510,7 +537,7 @@ class _SqliteAdvFuncHelper(_GenericAdvFuncHelper):
 
 
 PREFERED_DRIVERS = {
-    "postgres" : [ 'psycopg', 'psycopg2', 'pgdb', 'pyPgSQL.PgSQL', ],
+    "postgres" : [ 'psycopg2', 'psycopg', 'pgdb', 'pyPgSQL.PgSQL', ],
     "mysql" : [ 'MySQLdb', ], # 'pyMySQL.MySQL, ],
     "sqlite" : [ 'pysqlite2.dbapi2', 'sqlite', ],
     }
