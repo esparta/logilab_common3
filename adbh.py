@@ -80,6 +80,9 @@ class IN(FunctionDescr):
 class LENGTH(FunctionDescr):
     rtype = 'Int'
 
+class DATE(FunctionDescr):
+    rtype = 'Date'
+
 class _GenericAdvFuncHelper:
     """Generic helper, trying to provide generic way to implement
     specific functionnalities from others DBMS
@@ -103,6 +106,7 @@ class _GenericAdvFuncHelper:
         # transformation functions
         'UPPER': UPPER, 'LOWER': LOWER,
         'LENGTH': LENGTH,
+        'DATE': DATE,
         # keyword function
         'IN': IN
         }
@@ -118,15 +122,6 @@ class _GenericAdvFuncHelper:
         'Interval' : 'interval',
         'Password' : 'bytea',
         'Bytes' :    'bytea',
-        # FIXME: still there for use from erudi, should be moved out
-        # XXX think it can be safely removed now
-        'COUNT' : 'integer',
-        'MIN' :   'integer',
-        'MAX' :   'integer',
-        'SUM' :   'integer',
-        'LOWER' : 'text',
-        'UPPER' : 'text',
-        'LENGTH' :'integer',
         }
 
 
@@ -446,12 +441,13 @@ class _MyAdvFuncHelper(_GenericAdvFuncHelper):
         """return a list of commands to restore a backup the given database"""
         cmds = []
         if drop:
-            cmd = 'echo "DROP DATABASE %s;" | mysql -h %s -u %s -p' % (dbname, dbhost, dbuser)
+            cmd = 'echo "DROP DATABASE %s;" | mysql -h %s -u %s -p' % (
+                dbname, dbhost, dbuser)
             cmds.append(cmd)
-        cmd = 'echo "%s;" | mysql -h %s -u %s -p' % (self.sql_create_database(dbname, encoding),
-                                                  dbhost, dbuser)
+        cmd = 'echo "%s;" | mysql -h %s -u %s -p' % (
+            self.sql_create_database(dbname, encoding), dbhost, dbuser)
         cmds.append(cmd)
-        cmd = pgdbcmd('mysql -h %s -u %s -p < %s' % (dbname, dbhost, dbuser, backupfile))
+        cmd = 'mysql -h %s -u %s -p < %s' % (dbname, dbhost, dbuser, backupfile)
         cmds.append(cmd)
         return cmds
                 

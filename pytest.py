@@ -284,7 +284,6 @@ class PyTester(object):
     """encaspulates testrun logic"""
     
     def __init__(self, cvg, options):
-        self.tested_files = []
         self.report = GlobalTestReport()
         self.cvg = cvg
         self.options = options
@@ -301,7 +300,8 @@ class PyTester(object):
         """walks trhough current working directory, finds something
         which can be considered as a testdir and runs every test there
         """
-        for dirname, dirs, files in os.walk(os.getcwd()):
+        here = os.getcwd()
+        for dirname, dirs, _ in os.walk(here):
             for skipped in ('CVS', '.svn', '.hg'):
                 if skipped in dirs:
                     dirs.remove(skipped)
@@ -311,7 +311,11 @@ class PyTester(object):
                 # we found a testdir, let's explore it !
                 self.testonedir(dirname, exitfirst)
                 dirs[:] = []
-
+        if self.report.ran == 0:
+            # if no test was found during the visit, consider
+            # the local directory as a test directory even if
+            # it doesn't have a traditional test directory name
+            self.testonedir(here)
  
     def testonedir(self, testdir, exitfirst=False):
         """finds each testfile in the `testdir` and runs it"""
@@ -336,9 +340,9 @@ class PyTester(object):
             os.chdir(dirname)
         modname = osp.basename(filename)[:-3]
         try:
-            print >>sys.stderr, ('  %s  ' % osp.basename(filename)).center(70, '=')
+            print >> sys.stderr, ('  %s  ' % osp.basename(filename)).center(70, '=')
         except TypeError: # < py 2.4 bw compat
-            print >>sys.stderr, ('  %s  ' % osp.basename(filename)).center(70)
+            print >> sys.stderr, ('  %s  ' % osp.basename(filename)).center(70)
         try:
             try:
                 tstart, cstart = time(), clock()
@@ -350,7 +354,7 @@ class PyTester(object):
                 return testprog
             except (KeyboardInterrupt, SystemExit):
                 raise
-            except Exception, exc:
+            except Exception:
                 self.report.failed_to_test_module(filename)
                 print 'unhandled exception occured while testing', modname
                 import traceback
@@ -407,7 +411,7 @@ class DjangoTester(PyTester):
         """walks trhough current working directory, finds something
         which can be considered as a testdir and runs every test there
         """
-        for dirname, dirs, files in os.walk(os.getcwd()):
+        for dirname, dirs, _ in os.walk(os.getcwd()):
             for skipped in ('CVS', '.svn', '.hg'):
                 if skipped in dirs:
                     dirs.remove(skipped)
@@ -616,7 +620,7 @@ def run():
                 prof.close()
                 print 'profile data saved in', options.profile
             else:
-                 cmd(*args)           
+                cmd(*args)
         except SystemExit:
             raise
         except:
