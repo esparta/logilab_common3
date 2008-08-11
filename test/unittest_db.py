@@ -7,7 +7,10 @@ import socket
 from logilab.common.testlib import TestCase, unittest_main
 from logilab.common.db import *
 from logilab.common.db import PREFERED_DRIVERS
-from logilab.common.adbh import _SqliteAdvFuncHelper, _PGAdvFuncHelper
+from logilab.common.adbh import (_GenericAdvFuncHelper, _SqliteAdvFuncHelper,
+                                 _PGAdvFuncHelper, _MyAdvFuncHelper,
+                                 FunctionDescr, get_adv_func_helper,
+                                 auto_register_function)
 
 
 class PreferedDriverTC(TestCase):
@@ -132,6 +135,7 @@ class DBAPIAdaptersTC(TestCase):
     def setUp(self):
         """Memorize original PREFERED_DRIVERS"""
         self.old_drivers = PREFERED_DRIVERS['postgres'][:]
+        self.base_functions = dict(_GenericAdvFuncHelper.FUNCTIONS)
         self.host = 'crater.logilab.fr'
         self.db = 'gincotest2'
         self.user = 'adim'
@@ -140,6 +144,10 @@ class DBAPIAdaptersTC(TestCase):
     def tearDown(self):
         """Reset PREFERED_DRIVERS as it was"""
         PREFERED_DRIVERS['postgres'] = self.old_drivers
+        _GenericAdvFuncHelper.FUNCTIONS = self.base_functions
+        _PGAdvFuncHelper.FUNCTIONS = dict(self.base_functions)
+        _MyAdvFuncHelper.FUNCTIONS = dict(self.base_functions)
+        _SqliteAdvFuncHelper.FUNCTIONS = dict(self.base_functions)
 
     def test_raise(self):
         self.assertRaises(UnknownDriver, get_dbapi_compliant_module, 'pougloup')
@@ -154,7 +162,7 @@ class DBAPIAdaptersTC(TestCase):
             self.skip('postgresql pgdb module not installed')
         number_types = ('int2', 'int4', 'serial', 
                         'int8', 'float4', 'float8', 
-                        'numeric', 'bool', 'money')
+                        'numeric', 'bool', 'money', 'decimal')
         for num_type in number_types:
             yield self.assertEquals, num_type, module.NUMBER
         yield self.assertNotEquals, 'char', module.NUMBER
@@ -184,6 +192,38 @@ class DBAPIAdaptersTC(TestCase):
             self.skip('sqlite dbapi module not installed')            
         self.failUnless(isinstance(module.adv_func_helper, _SqliteAdvFuncHelper))
 
+
+    def test_auto_register_funcdef(self):
+        class MYFUNC(FunctionDescr):
+            supported_backends = ('postgres', 'sqlite',)
+            name_mapping = {'postgres': 'MYFUNC',
+                            'mysql': 'MYF',
+                            'sqlite': 'SQLITE_MYFUNC'}
+        auto_register_function(MYFUNC)
+
+        pghelper = get_adv_func_helper('postgres')
+        mshelper = get_adv_func_helper('mysql')
+        slhelper = get_adv_func_helper('sqlite')
+        self.failUnless('MYFUNC' in pghelper.FUNCTIONS)
+        self.failUnless('MYFUNC' in slhelper.FUNCTIONS)
+        self.failIf('MYFUNC' in mshelper.FUNCTIONS)
+
+
+    def test_funcname_with_different_backend_names(self):
+        class MYFUNC(FunctionDescr):
+            supported_backends = ('postgres', 'mysql', 'sqlite')
+            name_mapping = {'postgres': 'MYFUNC',
+                            'mysql': 'MYF',
+                            'sqlite': 'SQLITE_MYFUNC'}
+        auto_register_function(MYFUNC)
+
+        pghelper = get_adv_func_helper('postgres')
+        mshelper = get_adv_func_helper('mysql')
+        slhelper = get_adv_func_helper('sqlite')
+        self.assertEquals(pghelper.func_sqlname('MYFUNC'), 'MYFUNC')
+        self.assertEquals(mshelper.func_sqlname('MYFUNC'), 'MYF')
+        self.assertEquals(slhelper.func_sqlname('MYFUNC'), 'SQLITE_MYFUNC')
+            
 
 if __name__ == '__main__':
     unittest_main()

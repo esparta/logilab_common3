@@ -17,7 +17,6 @@ If you wish to customize the tester, you'll have to define a class named
 defined in the pytest module. Take a look at the `PyTester` and `DjangoTester`
 classes for more information about what can be done.
 
-
 For instance, if you wish to add a custom -l option to specify a loglevel, you
 could define the following ``pytestconf.py`` file ::
 
@@ -48,7 +47,12 @@ the ``optval`` method::
             loglevel = self.optval('loglevel')
             # ...
             
+
+:copyright: 2000-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: General Public License version 2 - http://www.gnu.org/licenses
 """
+__docformat__ = "restructuredtext en"
 
 PYTEST_DOC = """%prog [OPTIONS] [testfile [testpattern]]
 
@@ -338,17 +342,24 @@ class PyTester(object):
         if dirname:
             os.chdir(dirname)
         modname = osp.basename(filename)[:-3]
+        if batchmode:
+            from cStringIO import StringIO
+            outstream = StringIO()
+        else:
+            outstream = sys.stderr
         try:
-            print >> sys.stderr, ('  %s  ' % osp.basename(filename)).center(70, '=')
+            print >> outstream, ('  %s  ' % osp.basename(filename)).center(70, '=')
         except TypeError: # < py 2.4 bw compat
-            print >> sys.stderr, ('  %s  ' % osp.basename(filename)).center(70)
+            print >> outstream, ('  %s  ' % osp.basename(filename)).center(70)
         try:
             try:
                 tstart, cstart = time(), clock()
                 testprog = testlib.unittest_main(modname, batchmode=batchmode, cvg=self.cvg,
-                                                 options=self.options)
+                                                 options=self.options, outstream=outstream)
                 tend, cend = time(), clock()
                 ttime, ctime = (tend - tstart), (cend - cstart)
+                if testprog.result.testsRun and batchmode:
+                    print >> sys.stderr, outstream.getvalue()
                 self.report.feed(filename, testprog.result, ttime, ctime)
                 return testprog
             except (KeyboardInterrupt, SystemExit):

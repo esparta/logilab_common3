@@ -1,20 +1,8 @@
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-"""Deprecation utilities
+"""Deprecation utilities.
 
-:author:    Logilab
-:copyright: 2006-2008 LOGILAB S.A. (Paris, FRANCE)
-:contact:   http://www.logilab.fr/ -- mailto:python-projects@logilab.org
+:copyright: 2006-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: General Public License version 2 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -73,9 +61,10 @@ def class_moved(new_class, old_name=None, message=None):
 
 
 def deprecated_function(new_func, message=None):
-    """creates a function which fires a DeprecationWarning when used
+    """Creates a function which fires a DeprecationWarning when used.
 
-    For example, if <bar> is deprecated in favour of <foo> :
+    For example, if <bar> is deprecated in favour of <foo>:
+    
     >>> bar = deprecated_function(foo, 'bar is deprecated')
     >>> bar()
     sample.py:57: DeprecationWarning: bar is deprecated

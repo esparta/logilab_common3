@@ -1,23 +1,18 @@
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-"""This module contains helpers for DBMS specific (advanced or non standard)
-functionalities
+"""Helpers for DBMS specific (advanced or non standard) functionalities.
 
 Helpers are provided for postgresql, mysql and sqlite.
 
-:author:    Logilab
-:copyright: 2003-2008 LOGILAB S.A. (Paris, FRANCE)
-:contact:   http://www.logilab.fr/ -- mailto:python-projects@logilab.org
+:copyright:
+  2000-2008 `LOGILAB S.A. <http://www.logilab.fr>`_ (Paris, FRANCE),
+  all rights reserved.
+
+:contact:
+  http://www.logilab.org/project/logilab-common --
+  mailto:python-projects@logilab.org
+
+:license:
+  `General Public License version 2
+  <http://www.gnu.org/licenses/old-licenses/gpl-2.0.html>`_
 """
 __docformat__ = "restructuredtext en"
 
@@ -36,10 +31,13 @@ class metafunc(type):
 class FunctionDescr(object):
     __metaclass__ = metafunc
 
+    supported_backends = ()
     rtype = None # None <-> returned type should be the same as the first argument
     aggregat = False
     minargs = 1
     maxargs = 1
+
+    name_mapping = {}
 
     def __init__(self, name=None, rtype=rtype, aggregat=aggregat):
         if name is not None:
@@ -48,6 +46,13 @@ class FunctionDescr(object):
         self.rtype = rtype
         self.aggregat = aggregat
 
+    def backend_name(self, backend):
+        try:
+            return self.name_mapping[backend]
+        except KeyError:
+            return self.name
+    backend_name = classmethod(backend_name)
+    
     #@classmethod
     def check_nbargs(cls, nbargs):
         if cls.minargs is not None and \
@@ -83,6 +88,14 @@ class LENGTH(FunctionDescr):
 class DATE(FunctionDescr):
     rtype = 'Date'
 
+class RANDOM(FunctionDescr):
+    supported_backends = ('postgres', 'mysql',)
+    rtype = 'Float'
+    minargs = maxargs = 0
+    name_mapping = {'postgres': 'RANDOM',
+                    'mysql': 'RAND',
+                    }
+
 class _GenericAdvFuncHelper:
     """Generic helper, trying to provide generic way to implement
     specific functionnalities from others DBMS
@@ -91,6 +104,7 @@ class _GenericAdvFuncHelper:
     """    
     # DBMS resources descriptors and accessors
     
+    backend_name = None # overriden in subclasses ('postgres', 'sqlite', etc.)
     needs_from_clause = False
     union_parentheses_support = True
     users_support = True
@@ -107,6 +121,7 @@ class _GenericAdvFuncHelper:
         'UPPER': UPPER, 'LOWER': LOWER,
         'LENGTH': LENGTH,
         'DATE': DATE,
+        'RANDOM': RANDOM,
         # keyword function
         'IN': IN
         }
@@ -115,6 +130,7 @@ class _GenericAdvFuncHelper:
         'String' :   'text',
         'Int' :      'integer',
         'Float' :    'float',
+        'Decimal' :  'decimal',
         'Boolean' :  'boolean',
         'Date' :     'date', 
         'Time' :     'time', 
@@ -157,10 +173,14 @@ class _GenericAdvFuncHelper:
         return self.groups_support
     support_user = obsolete('use groups_support attribute')(support_groups)
 
+    def func_sqlname(self, funcname):
+        funcdef = self.function_description(funcname)
+        return funcdef.backend_name(self.backend_name)
+    
     def system_database(self):
         """return the system database for the given driver"""
         raise NotImplementedError('not supported by this DBMS')
-    
+
     def backup_command(self, dbname, dbhost, dbuser, dbpassword, backupfile,
                        keepownership=True):
         """return a command to backup the given database"""
@@ -281,6 +301,7 @@ def pgdbcmd(cmd, dbhost, dbuser):
 class _PGAdvFuncHelper(_GenericAdvFuncHelper):
     """Postgres helper, taking advantage of postgres SEQUENCE support
     """
+    backend_name = 'postgres'
     # modifiable but should not be shared
     FUNCTIONS = _GenericAdvFuncHelper.FUNCTIONS.copy()
     
@@ -391,9 +412,11 @@ class _SqliteAdvFuncHelper(_GenericAdvFuncHelper):
 
     An exception is raised when the functionality is not emulatable
     """
+    backend_name = 'sqlite'
     # modifiable but should not be shared
     FUNCTIONS = _GenericAdvFuncHelper.FUNCTIONS.copy()
-    
+    FUNCTIONS.pop('RANDOM') # not defined in sqlite
+
     users_support = groups_support = False
     ilike_support = False
     union_parentheses_support = False
@@ -416,6 +439,7 @@ class _SqliteAdvFuncHelper(_GenericAdvFuncHelper):
 class _MyAdvFuncHelper(_GenericAdvFuncHelper):
     """MySQL helper, taking advantage of postgres SEQUENCE support
     """
+    backend_name = 'mysql'
     needs_from_clause = True
     ilike_support = False # insensitive search by default
 
@@ -519,3 +543,9 @@ def get_adv_func_helper(driver):
 def register_function(driver, funcdef):
     ADV_FUNC_HELPER_DIRECTORY[driver].register_function(funcdef)    
 
+# this function should be called `register_function` but the other
+# definition was defined prior to this one
+def auto_register_function(funcdef):
+    """register the function `funcdef` on supported backends"""
+    for driver in  funcdef.supported_backends:
+        register_function(driver, funcdef)

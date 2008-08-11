@@ -1,29 +1,31 @@
-# modified copy of some functions from test/regrtest.py from PyXml
-# disable camel case warning
-# pylint: disable-msg=C0103
-"""Copyright (c) 2003-2006 LOGILAB S.A. (Paris, FRANCE).
-http://www.logilab.fr/ -- mailto:contact@logilab.fr  
-
-Run tests.
+"""Run tests.
 
 This will find all modules whose name match a given prefix in the test
-directory, and run them.  Various command line options provide
+directory, and run them. Various command line options provide
 additional facilities.
 
 Command line options:
 
--v: verbose -- run tests in verbose mode with output to stdout
--q: quiet -- don't print anything except if a test fails
--t: testdir -- directory where the tests will be found
--x: exclude -- add a test to exclude
--p: profile -- profiled execution
--c: capture -- capture standard out/err during tests
--d: dbc     -- enable design-by-contract
+ -v: verbose -- run tests in verbose mode with output to stdout
+ -q: quiet -- don't print anything except if a test fails
+ -t: testdir -- directory where the tests will be found
+ -x: exclude -- add a test to exclude
+ -p: profile -- profiled execution
+ -c: capture -- capture standard out/err during tests
+ -d: dbc     -- enable design-by-contract
 
 If no non-option arguments are present, prefixes used are 'test',
 'regrtest', 'smoketest' and 'unittest'.
 
+:copyright: 2003-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: General Public License version 2 - http://www.gnu.org/licenses
 """
+__docformat__ = "restructuredtext en"
+# modified copy of some functions from test/regrtest.py from PyXml
+# disable camel case warning
+# pylint: disable-msg=C0103
+
 import sys
 import os, os.path as osp
 import re
@@ -197,11 +199,10 @@ main = obsolete("testlib.main() is obsolete, use the pytest tool instead")(main)
 
 
 def run_tests(tests, quiet, verbose, runner=None, capture=0):
-    """ execute a list of tests
-    return a 3-uple with :
-       _ the list of passed tests
-       _ the list of failed tests
-       _ the list of skipped tests
+    """Execute a list of tests.
+
+    :rtype: tuple
+    :return: tuple (list of passed tests, list of failed tests, list of skipped tests)
     """
     good = []
     bad = []
@@ -429,17 +430,28 @@ class SkipAwareTestResult(unittest._TextTestResult):
 
 
 
-class TestSuite(unittest.TestSuite):
-    def run(self, result, runcondition=None, options=None):
-        for test in self._tests:
-            if result.shouldStop:
-                break
+def run(self, result, runcondition=None, options=None):
+    for test in self._tests:
+        if result.shouldStop:
+            break
+        try:
             test(result, runcondition, options)
-        return result
-    
-    # python2.3 compat
-    def __call__(self, *args, **kwds):
-        return self.run(*args, **kwds)
+        except TypeError:
+            # this might happen if a raw unittest.TestCase is defined
+            # and used with python (and not pytest)
+            warn("%s should extend lgc.testlib.TestCase instead of unittest.TestCase"
+                 % test)
+            test(result)
+    return result
+unittest.TestSuite.run = run
+
+# backward compatibility: TestSuite might be imported from lgc.testlib
+TestSuite = unittest.TestSuite
+
+# python2.3 compat
+def __call__(self, *args, **kwds):
+    return self.run(*args, **kwds)
+unittest.TestSuite.__call__ = __call__
 
 
 class SkipAwareTextTestRunner(unittest.TextTestRunner):
@@ -532,10 +544,10 @@ class SkipAwareTextTestRunner(unittest.TextTestRunner):
 
 
 class keywords(dict):
-    """keyword args (**kwargs) support for generative tests"""
+    """Keyword args (**kwargs) support for generative tests."""
 
 class starargs(tuple):
-    """variable arguments (*args) for generative tests"""
+    """Variable arguments (*args) for generative tests."""
     def __new__(cls, *args):
         return tuple.__new__(cls, args)
 
@@ -543,9 +555,10 @@ class starargs(tuple):
 
 class NonStrictTestLoader(unittest.TestLoader):
     """
-    overrides default testloader to be able to omit classname when
-    specifying tests to run on command line. For example, if the file
-    test_foo.py contains ::
+    Overrides default testloader to be able to omit classname when
+    specifying tests to run on command line.
+
+    For example, if the file test_foo.py contains ::
     
         class FooTC(TestCase):
             def test_foo1(self): # ...
@@ -555,13 +568,12 @@ class NonStrictTestLoader(unittest.TestLoader):
         class BarTC(TestCase):
             def test_bar2(self): # ...
 
-    python test_foo.py will run the 3 tests in FooTC
-    python test_foo.py FooTC will run the 3 tests in FooTC
-    python test_foo.py test_foo will run test_foo1 and test_foo2
-    python test_foo.py test_foo1 will run test_foo1
-    python test_foo.py test_bar will run FooTC.test_bar1 and BarTC.test_bar2
+    'python test_foo.py' will run the 3 tests in FooTC
+    'python test_foo.py FooTC' will run the 3 tests in FooTC
+    'python test_foo.py test_foo' will run test_foo1 and test_foo2
+    'python test_foo.py test_foo1' will run test_foo1
+    'python test_foo.py test_bar' will run FooTC.test_bar1 and BarTC.test_bar2
     """
-    suiteClass = TestSuite
 
     def __init__(self):
         self.skipped_patterns = []
@@ -674,10 +686,11 @@ Examples:
                                                in MyTestCase
 """
     def __init__(self, module='__main__', defaultTest=None, batchmode=False,
-                 cvg=None, options=None):
+                 cvg=None, options=None, outstream=sys.stderr):
         self.batchmode = batchmode
         self.cvg = cvg
         self.options = options
+        self.outstream = outstream
         super(SkipAwareTestProgram, self).__init__(
             module=module, defaultTest=defaultTest,
             testLoader=NonStrictTestLoader())
@@ -742,6 +755,7 @@ Examples:
                 print 'setup_module error:', exc
                 sys.exit(1)
         self.testRunner = SkipAwareTextTestRunner(verbosity=self.verbosity,
+                                                  stream=self.outstream,
                                         exitfirst=self.exitfirst,
                                         capture=self.capture,
                                         printonly=self.printonly,
@@ -855,10 +869,12 @@ def capture_stderr(printonly=None):
 
 
 def unittest_main(module='__main__', defaultTest=None,
-                  batchmode=False, cvg=None, options=None):
+                  batchmode=False, cvg=None, options=None,
+                  outstream=sys.stderr):
     """use this functon if you want to have the same functionality
     as unittest.main"""
-    return SkipAwareTestProgram(module, defaultTest, batchmode, cvg, options)
+    return SkipAwareTestProgram(module, defaultTest, batchmode,
+                                cvg, options, outstream)
 
 class TestSkipped(Exception):
     """raised when a test is skipped"""
@@ -1167,23 +1183,31 @@ class TestCase(unittest.TestCase):
     def assertUnorderedIterableEquals(self, got, expected, msg=None):
         """compares two iterable and shows difference between both"""
         got, expected = list(got), list(expected)
-        if msg is None:
-	        msg1 = '%s != %s' % (sorted(got), sorted(expected))
-        else:
-            msg1 = msg
-        self.assertEquals(len(got), len(expected), msg1)
-        got, expected = set(got), set(expected)
-        if got != expected:
-            missing = expected - got
-            unexpected = got - expected
+        self.assertSetEqual(set(got), set(expected), msg)
+        if len(got) != len(expected):
             if msg is None:
-                msg = '\tunexpected: %s\n\tmissing: %s' % (unexpected, missing)
+                msg = ['Iterable have the same elements but not the same number',
+                       '\t<element>\t<expected>i\t<got>']
+                got_count = {}
+                expected_count = {}
+                for element in got:
+                    got_count[element] = got_count.get(element,0) + 1
+                for element in expected:
+                    expected_count[element] = expected_count.get(element,0) + 1
+                # we know that got_count.key() == expected_count.key()
+                # because of assertSetEquals
+                for element, count in got_count.iteritems():
+                    other_count = expected_count[element]
+                    if other_count != count:
+                        msg.append('\t%s\t%s\t%s' % (element, other_count, count))
+
             self.fail(msg)
 
     assertUnorderedIterableEqual = assertUnorderedIterableEquals
+    assertUnordIterEquals = assertUnordIterEqual = assertUnorderedIterableEqual
 
     def assertSetEquals(self,got,expected, msg=None):
-        if not(isinstance(got, set) or isinstance(expected, set)):
+        if not(isinstance(got, set) and isinstance(expected, set)):
             warn("the assertSetEquals function if now intended for set only."\
                 "use assertUnorderedIterableEquals instead.",
                 DeprecationWarning, 2)
@@ -1194,8 +1218,8 @@ class TestCase(unittest.TestCase):
         items['unexpected'] = got - expected
         if any(items.itervalues()):
             if msg is None:
-                msg = '\n'.join('%s:\n\t%s' % (key,"\n\t".join(value))
-                    for key, value in items.iteritems() if value)
+                msg = '\n'.join('%s:\n\t%s' % (key,"\n\t".join(str(value) for value in values))
+                    for key, values in items.iteritems() if values)
             self.fail(msg)
 
 
@@ -1299,7 +1323,7 @@ class TestCase(unittest.TestCase):
             read.append(line)
             # lines that don't start with a ' ' are diff ones
             if not line.startswith(' '):
-                self.fail(''.join(['%s\n'%msg_prefix]+read + list(result)))
+                self.fail('\n'.join(['%s\n'%msg_prefix]+read + list(result)))
         
     def assertTextEquals(self, text1, text2, junk=None,
             msg_prefix='Text differ'):
@@ -1612,9 +1636,9 @@ def mock_object(**params):
 
 
 def create_files(paths, chroot):
-    """creates directories and files found in <path>
+    """Creates directories and files found in <path>.
 
-    :param path: list of relative paths to files or directories
+    :param paths: list of relative paths to files or directories
     :param chroot: the root directory in which paths will be created
 
     >>> from os.path import isdir, isfile

@@ -1,20 +1,5 @@
-# Copyright (c) 2002-2008 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-"""This modules contains wrappers to get actually replaceable DBAPI2 compliant
-modules and database connection whatever the database and client lib used.
+"""Wrappers to get actually replaceable DBAPI2 compliant modules and
+database connection whatever the database and client lib used.
 
 Currently support:
 
@@ -30,7 +15,12 @@ you can control which one you want to use using the
 Additional helpers are also provided for advanced functionalities such
 as listing existing users or databases, creating database... Get the
 helper for your database using the `get_adv_func_helper` function.
+
+:copyright: 2002-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: General Public License version 2 - http://www.gnu.org/licenses
 """
+__docformat__ = "restructuredtext en"
 
 import sys
 import re
@@ -173,7 +163,8 @@ class PyCursor:
     
 class DBAPIAdapter:
     """Base class for all DBAPI adpaters"""
-
+    UNKNOWN = None
+    
     def __init__(self, native_module, pywrap=False):
         """
         :type native_module: module
@@ -181,7 +172,15 @@ class DBAPIAdapter:
         """
         self._native_module = native_module
         self._pywrap = pywrap
-
+        # optimisation: copy type codes from the native module to this instance
+        # since the .process_value method may be heavily used
+        for typecode in ('STRING', 'BOOLEAN', 'BINARY', 'DATETIME', 'NUMBER',
+                         'UNKNOWN'):
+            try:
+                setattr(self, typecode, getattr(self, typecode))
+            except AttributeError:
+                print 'WARNING: %s adapter has no %s type code' % (self, typecode)
+            
     def connect(self, host='', database='', user='', password='', port=''):
         """Wraps the native module connect method"""
         kwargs = {'host' : host, 'port' : port, 'database' : database,
@@ -207,8 +206,9 @@ class DBAPIAdapter:
         return getattr(self._native_module, attrname)
 
     def process_value(self, value, description, encoding='utf-8', binarywrap=None):
+        # if the dbapi module isn't supporting type codes, override to return value directly
         typecode = description[1]
-        assert typecode is not None, self # dbapi module isn't supporting type codes, override to return value directly
+        assert typecode is not None, self 
         if typecode == self.STRING:
             if isinstance(value, str):
                 return unicode(value, encoding, 'replace')
@@ -216,6 +216,12 @@ class DBAPIAdapter:
             return bool(value)
         elif typecode == self.BINARY and not binarywrap is None:
             return binarywrap(value)
+        elif typecode == self.UNKNOWN:
+            # may occurs on constant selection for instance (eg SELECT 'hop')
+            # with postgresql at least 
+            if isinstance(value, str):
+                return unicode(value, encoding, 'replace')
+            
 ##                 elif typecode == dbapimod.DATETIME:
 ##                     pass
 ##                 elif typecode == dbapimod.NUMBER:
@@ -263,12 +269,18 @@ class _PsycopgAdapter(DBAPIAdapter):
         cnx = self._native_module.connect(cnx_string)
         cnx.set_isolation_level(1)
         return self._wrap_if_needed(cnx, user)
+
     
 class _Psycopg2Adapter(_PsycopgAdapter):
     """Simple Psycopg2 Adapter to DBAPI (cnx_string differs from classical ones)
     """
-    BOOLEAN = 16 # XXX see additional types in psycopg2.extensions
+    # not defined in psycopg2.extensions
+    # "select typname from pg_type where oid=705";
+    UNKNOWN = 705
+    
     def __init__(self, native_module, pywrap=False):
+        from psycopg2 import extensions
+        self.BOOLEAN = extensions.BOOLEAN
         DBAPIAdapter.__init__(self, native_module, pywrap)
         self._init_psycopg2()
 
@@ -324,14 +336,16 @@ class _PgsqlAdapter(DBAPIAdapter):
 class _PySqlite2Adapter(DBAPIAdapter):
     """Simple pysqlite2 Adapter to DBAPI
     """
+    # no type code in pysqlite2
+    BINARY = 'XXX'
+    STRING = 'XXX'
+    DATETIME = 'XXX'
+    NUMBER = 'XXX'
+    BOOLEAN = 'XXX'
+    
     def __init__(self, native_module, pywrap=False):
         DBAPIAdapter.__init__(self, native_module, pywrap)
         self._init_pysqlite2()
-        # no type code in pysqlite2
-        self.BINARY = 'XXX'
-        self.STRING = 'XXX'
-        self.DATETIME = 'XXX'
-        self.NUMBER = 'XXX'
 
     def _init_pysqlite2(self):
         """initialize pysqlite2 to use mx.DateTime for date and timestamps"""
@@ -358,6 +372,17 @@ class _PySqlite2Adapter(DBAPIAdapter):
         def adapt_boolean(bval):
             return str(bval).upper()
         sqlite.register_adapter(bool, adapt_boolean)
+        
+
+        # decimal type handling
+        from decimal import Decimal
+        def adapt_decimal(data):
+            return str(data)
+        sqlite.register_adapter(Decimal,adapt_decimal)
+
+        def convert_decimal(data):
+            return Decimal(data)
+        sqlite.register_converter('decimal',convert_decimal)
 
         # date/time types handling
         if HAS_MX_DATETIME:
@@ -402,7 +427,9 @@ class _PySqlite2Adapter(DBAPIAdapter):
                 if kwargs is None:
                     self.__class__.__bases__[0].execute(self, sql)
                 else:
-                    self.__class__.__bases__[0].execute(self, self._replace_parameters(sql, kwargs), kwargs)
+                    final_sql = self._replace_parameters(sql, kwargs)
+                    self.__class__.__bases__[0].execute(self, final_sql , kwargs)
+
             def executemany(self, sql, kwargss):
                 if not isinstance(kwargss, (list, tuple)):
                     kwargss = tuple(kwargss)

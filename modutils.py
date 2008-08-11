@@ -1,26 +1,10 @@
-# -*- coding: iso-8859-1 -*-
-# Copyright (c) 2003-2008 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# -*- coding: utf-8 -*-
 """Python modules manipulation utility functions.
 
-:author:    Logilab
-:copyright: 2003-2008 LOGILAB S.A. (Paris, FRANCE)
-:contact:   http://www.logilab.fr/ -- mailto:python-projects@logilab.org
-
-
+:author: Logilab
+:copyright: 2000-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: General Public License version 2 - http://www.gnu.org/licenses
 
 :type PY_SOURCE_EXTS: tuple(str)
 :var PY_SOURCE_EXTS: list of possible python source file extension
@@ -31,7 +15,6 @@
 :type BUILTIN_MODULES: dict
 :var BUILTIN_MODULES: dictionary with builtin module names has key
 """
-
 __docformat__ = "restructuredtext en"
 
 import sys
@@ -82,7 +65,7 @@ class LazyObject(object):
 
 
 def load_module_from_name(dotted_name, path=None, use_sys=1):
-    """load a Python module from it's name
+    """Load a Python module from it's name.
 
     :type dotted_name: str
     :param dotted_name: python name of a module or package
@@ -107,7 +90,7 @@ def load_module_from_name(dotted_name, path=None, use_sys=1):
 
 
 def load_module_from_modpath(parts, path=None, use_sys=1):
-    """load a python module from it's splitted name
+    """Load a python module from it's splitted name.
 
     :type parts: list(str) or tuple(str)
     :param parts:
@@ -121,9 +104,6 @@ def load_module_from_modpath(parts, path=None, use_sys=1):
     :type use_sys: bool
     :param use_sys:
       boolean indicating whether the sys.modules dictionary should be used or not
-
-    :param _prefix: used internally, should not be specified
-
 
     :raise ImportError: if the module or package is not found
     
@@ -158,10 +138,10 @@ def load_module_from_modpath(parts, path=None, use_sys=1):
 
 
 def load_module_from_file(filepath, path=None, use_sys=1):
-    """load a Python module from it's path
+    """Load a Python module from it's path.
 
     :type filepath: str
-    :param dotted_name: path to the python module or package
+    :param filepath: path to the python module or package
 
     :type path: list or None
     :param path:
