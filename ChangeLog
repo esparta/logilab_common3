@@ -4,6 +4,7 @@ ChangeLog for logilab.common
   --
     * shellutils: new simple unzip function
 	
+2008-08-07  --  0.34.0
     * changelog: properly adds new line at the end of each entry
 
     * testlib: add a with_tempdir decorator ensuring all temporary files and dirs are removed
