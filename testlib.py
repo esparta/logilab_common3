@@ -418,7 +418,6 @@ class SkipAwareTestResult(unittest._TextTestResult):
                 self.stream.writeln("%s: %s" % (flavour, descr))
 
             self.stream.writeln(self.separator2)
-
             if PYGMENTS_FOUND and isatty(self.stream):
                 # ensure `err` is a unicode string before passing it to highlight
                 if isinstance(err, str):
