@@ -42,7 +42,7 @@ def chown(path, login=None, group=None):
         try:
             uid = int(login)
         except ValueError:
-            import pwd
+            import pwd # Platforms: Unix
             uid = pwd.getpwnam(login).pw_uid
     if group is None:
         gid = -1
@@ -93,7 +93,7 @@ def cp(source, destination):
     mv(source, destination, _action=shutil.copy)
 
 def find(directory, exts, exclude=False, blacklist=STD_BLACKLIST):
-    """Recursivly find files ending with the given extensions from the directory.
+    """Recursively find files ending with the given extensions from the directory.
 
     :type directory: str
     :param directory:
@@ -285,6 +285,7 @@ def confirm(question, default_is_yes=True):
     """ask for confirmation and return true on positive answer"""
     return RawInput().confirm(question, default_is_yes)
 
+
 class RawInput(object):
 
     def __init__(self, input=None, printer=None):
@@ -331,3 +332,16 @@ class RawInput(object):
         return answer == 'y'
 
 ASK = RawInput()
+
+
+def getlogin():
+    """avoid using os.getlogin() because of strange tty / stdin problems
+    (man 3 getlogin)
+    Another solution would be to use $LOGNAME, $USER or $USERNAME
+    """
+    if sys.platform != 'win32':
+        import pwd # Platforms: Unix
+        return pwd.getpwuid(os.getuid())[0]
+    else:
+        return os.environ['USERNAME']
+
