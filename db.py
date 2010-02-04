@@ -28,6 +28,7 @@ from warnings import warn
 
 import logilab.common as lgc
 from logilab.common.deprecation import obsolete
+import datetime
 
 try:
     from mx.DateTime import DateTimeType, DateTimeDeltaType, strptime
@@ -183,7 +184,7 @@ class DBAPIAdapter:
             except AttributeError:
                 print 'WARNING: %s adapter has no %s type code' % (self, typecode)
 
-    def connect(self, host='', database='', user='', password='', port=''):
+    def connect(self, host='', database='', user='', password='', port='', extra_args=None):
         """Wraps the native module connect method"""
         kwargs = {'host' : host, 'port' : port, 'database' : database,
                   'user' : user, 'password' : password}
@@ -245,7 +246,7 @@ class _PgdbAdapter(DBAPIAdapter):
                                              'int8', 'float4', 'float8',
                                              'numeric', 'bool', 'money')
 
-    def connect(self, host='', database='', user='', password='', port=''):
+    def connect(self, host='', database='', user='', password='', port='', extra_args=None):
         """Wraps the native module connect method"""
         if port:
             warn("pgdb doesn't support 'port' parameter in connect()", UserWarning)
@@ -258,7 +259,7 @@ class _PgdbAdapter(DBAPIAdapter):
 class _PsycopgAdapter(DBAPIAdapter):
     """Simple Psycopg Adapter to DBAPI (cnx_string differs from classical ones)
     """
-    def connect(self, host='', database='', user='', password='', port=''):
+    def connect(self, host='', database='', user='', password='', port='', extra_args=None):
         """Handles psycopg connection format"""
         if host:
             cnx_string = 'host=%s  dbname=%s  user=%s' % (host, database, user)
@@ -315,7 +316,7 @@ class _Psycopg2Adapter(_PsycopgAdapter):
 class _PgsqlAdapter(DBAPIAdapter):
     """Simple pyPgSQL Adapter to DBAPI
     """
-    def connect(self, host='', database='', user='', password='', port=''):
+    def connect(self, host='', database='', user='', password='', port='', extra_args=None):
         """Handles psycopg connection format"""
         kwargs = {'host' : host, 'port': port or None,
                   'database' : database,
@@ -451,7 +452,7 @@ class _PySqlite2Adapter(DBAPIAdapter):
             sqlite.register_converter('interval', convert_timedelta)
 
 
-    def connect(self, host='', database='', user='', password='', port=None):
+    def connect(self, host='', database='', user='', password='', port=None, extra_args=None):
         """Handles sqlite connection format"""
         sqlite = self._native_module
 
@@ -501,7 +502,7 @@ class _SqliteAdapter(DBAPIAdapter):
         DBAPIAdapter.__init__(self, native_module, pywrap)
         self.DATETIME = native_module.TIMESTAMP
 
-    def connect(self, host='', database='', user='', password='', port=''):
+    def connect(self, host='', database='', user='', password='', port='', extra_args=None):
         """Handles sqlite connection format"""
         cnx = self._native_module.connect(database)
         return self._wrap_if_needed(cnx, user)
@@ -536,7 +537,7 @@ class _MySqlDBAdapter(DBAPIAdapter):
             times.DateTimeDeltaType = mxdt.DateTimeDeltaType
 
     def connect(self, host='', database='', user='', password='', port=None,
-                unicode=True, charset='utf8'):
+                unicode=True, charset='utf8', extra_args=None):
         """Handles mysqldb connection format
         the unicode named argument asks to use Unicode objects for strings
         in result sets and query parameters
@@ -578,8 +579,6 @@ class _MySqlDBAdapter(DBAPIAdapter):
         return DBAPIAdapter.process_value(self, value, description, encoding, binarywrap)
 
     def type_code_test(self, cursor):
-        print '*'*80
-        print 'module type codes'
         for typename in ('STRING', 'BOOLEAN', 'BINARY', 'DATETIME', 'NUMBER'):
             print typename, getattr(self, typename)
         try:
@@ -601,7 +600,152 @@ class _MySqlDBAdapter(DBAPIAdapter):
         finally:
             cursor.execute("DROP TABLE _type_code_test")
 
+class _PyodbcAdapter(DBAPIAdapter):
+    driver = 'Override in subclass'
+    _use_trusted_connection = False
+    
+    @classmethod
+    def use_trusted_connection(klass, use_trusted=False):
+        """
+        pass True to this class method to enable Windows
+        Authentication (i.e. passwordless auth)
+        """
+        klass._use_trusted_connection = use_trusted
+    @classmethod
+    def _process_extra_args(klass, arguments):
+        arguments = arguments.lower().split(';')
+        if 'trusted_connection' in arguments:
+            klass.use_trusted_connection(True)
 
+    def connect(self, host='', database='', user='', password='', port=None, extra_args=None):
+        """Handles pyodbc connection format
+        
+        If extra_args is not None, it is expected to be a string
+        containing a list of semicolon separated keywords. The only
+        keyword currently supported is Trusted_Connection : if found
+        the connection string to the database will include
+        Trusted_Connection=yes (which for SqlServer will trigger using
+        Windows Authentication, and therefore no login/password is
+        required.
+        """
+        pyodbc = self._native_module
+        if extra_args is not None:
+            self._process_extra_args(extra_args)
+        class PyodbcCursor(object):
+            """cursor adapting usual dict format to pyodbc format
+            in SQL queries
+            """
+            def __init__(self, cursor):
+                self._cursor = cursor
+            def _replace_parameters(self, sql, kwargs, _date_class=datetime.date):
+                if isinstance(kwargs, dict):
+                    new_sql = re.sub(r'%\(([^\)]+)\)s', r'?', sql)
+                    key_order = re.findall(r'%\(([^\)]+)\)s', sql)
+                    args = []
+                    for key in key_order:
+                        arg = kwargs[key]
+                        if isinstance(arg, _date_class):
+                            arg = datetime.datetime.combine(arg, datetime.time(0))
+                        args.append(arg)
+
+                    return new_sql, tuple(args)
+                        
+                # XXX dumb
+                return re.sub(r'%s', r'?', sql), kwargs
+
+            def execute(self, sql, kwargs=None):
+                if kwargs is None:
+                    self._cursor.execute(sql)
+                else:
+                    final_sql, args = self._replace_parameters(sql, kwargs)
+                    try:
+                        self._cursor.execute(final_sql , args)
+                    except:
+                        raise
+            def executemany(self, sql, kwargss):
+                if not isinstance(kwargss, (list, tuple)):
+                    kwargss = tuple(kwargss)
+                self._cursor.executemany(self, self._replace_parameters(sql, kwargss[0]), kwargss)
+
+            def _get_smalldate_columns(self):
+                cols = []
+                for i, coldef in enumerate(self._cursor.description):
+                    if coldef[1] is datetime.datetime and coldef[3] == 16:
+                        cols.append(i)
+                return cols
+
+            def fetchone(self):
+                smalldate_cols = self._get_smalldate_columns()
+                row = self._cursor.fetchone()
+                return self._replace_smalldate(row, smalldate_cols)
+
+            def fetchall (self):
+                smalldate_cols = self._get_smalldate_columns()
+                rows = []
+                for row in self._cursor.fetchall():
+                    rows.append(self._replace_smalldate(row, smalldate_cols))
+                return rows
+
+            def _replace_smalldate(self, row, smalldate_cols):
+                if smalldate_cols:
+                    new_row = row[:]
+                    for col in smalldate_cols:
+                        new_row[col] = new_row[col].date()
+                    return new_row
+                else:
+                    return row
+            def __getattr__(self, attrname):
+                return getattr(self._cursor, attrname)
+
+        class PyodbcCnxWrapper:
+            def __init__(self, cnx):
+                self._cnx = cnx
+            def cursor(self):
+                return PyodbcCursor(self._cnx.cursor())
+            def __getattr__(self, attrname):
+                return getattr(self._cnx, attrname)
+
+        cnx_string_bits = ['DRIVER={%(driver)s}']
+        variables = {'host' : host,
+                     'database' : database,
+                     'user' : user, 'password' : password,
+                     'driver': self.driver}
+        if self._use_trusted_connection:
+            variables['Trusted_Connection'] = 'yes'
+            del variables['user']
+            del variables['password']
+        cnx = self._native_module.connect(**variables)
+        return self._wrap_if_needed(PyodbcCnxWrapper(cnx), user)
+
+    def process_value(self, value, description, encoding='utf-8', binarywrap=None):
+        # if the dbapi module isn't supporting type codes, override to return value directly
+        typecode = description[1]
+        assert typecode is not None, self
+        if typecode == self.STRING:
+            if isinstance(value, str):
+                return unicode(value, encoding, 'replace')
+        elif typecode == self.BINARY:  # value is a python buffer
+            if binarywrap is not None:
+                return binarywrap(value[:])
+            else:
+                return value[:]
+        elif typecode == self.UNKNOWN:
+            # may occurs on constant selection for instance (e.g. SELECT 'hop')
+            # with postgresql at least
+            if isinstance(value, str):
+                return unicode(value, encoding, 'replace')
+
+        return value
+
+
+class _PyodbcSqlServer2000Adapter(_PyodbcAdapter):
+    driver = "SQL Server"
+    
+class _PyodbcSqlServer2005Adapter(_PyodbcAdapter):
+    driver = "SQL Native Client"
+
+class _PyodbcSqlServer2008Adapter(_PyodbcAdapter):
+    driver = "SQL Native Client 10.0"
 
 ## Drivers, Adapters and helpers registries ###################################
 
@@ -610,6 +754,9 @@ PREFERED_DRIVERS = {
     "postgres" : [ 'psycopg2', 'psycopg', 'pgdb', 'pyPgSQL.PgSQL', ],
     "mysql" : [ 'MySQLdb', ], # 'pyMySQL.MySQL, ],
     "sqlite" : ['pysqlite2.dbapi2', 'sqlite', 'sqlite3',],
+    "sqlserver2000" : ['pyodbc'],
+    "sqlserver2005" : ['pyodbc'],
+    "sqlserver2008" : ['pyodbc'],
     }
 
 _ADAPTERS = {
@@ -622,6 +769,9 @@ _ADAPTERS = {
     'sqlite' : { 'pysqlite2.dbapi2' : _PySqlite2Adapter,
                  'sqlite' : _SqliteAdapter,
                  'sqlite3' : _PySqlite2Adapter, },
+    "sqlserver2000" : {'pyodbc': _PyodbcSqlServer2000Adapter},
+    "sqlserver2005" : {'pyodbc': _PyodbcSqlServer2005Adapter},
+    "sqlserver2008" : {'pyodbc': _PyodbcSqlServer2008Adapter},
     }
 
 # _AdapterDirectory could be more generic by adding a 'protocol' parameter
@@ -693,7 +843,7 @@ def get_dbapi_compliant_module(driver, prefered_drivers = None, quiet = False,
 
 def get_connection(driver='postgres', host='', database='', user='',
                   password='', port='', quiet=False, drivers=PREFERED_DRIVERS,
-                  pywrap=False):
+                  pywrap=False, extra_args=None):
     """return a db connection according to given arguments"""
     module, modname = _import_driver_module(driver, drivers, ['connect'])
     try:
@@ -712,7 +862,7 @@ def get_connection(driver='postgres', host='', database='', user='',
             pass
     if port:
         port = int(port)
-    return adapted_module.connect(host, database, user, password, port=port)
+    return adapted_module.connect(host, database, user, password, port=port, extra_args=extra_args)
 
 
 from logilab.common.deprecation import moved
