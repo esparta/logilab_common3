@@ -7,14 +7,13 @@
 __docformat__ = "restructuredtext en"
 
 from types import MethodType
-from time import clock
+from time import clock, time
 import sys, re
 
 # XXX rewrite so we can use the decorator syntax when keyarg has to be specified
 
 def cached(callableobj, keyarg=None):
     """Simple decorator to cache result of method call."""
-    #print callableobj, keyarg, callableobj.func_code.co_argcount
     if callableobj.func_code.co_argcount == 1 or keyarg == 0:
 
         def cache_wrapper1(self, *args):
@@ -27,6 +26,7 @@ def cached(callableobj, keyarg=None):
                 value = callableobj(self, *args)
                 setattr(self, cache, value)
                 return value
+        cache_wrapper1.__doc__ = callableobj.__doc__
         return cache_wrapper1
 
     elif keyarg:
@@ -47,6 +47,7 @@ def cached(callableobj, keyarg=None):
                 #print 'miss', self, cache, key
                 _cache[key] = callableobj(self, *args, **kwargs)
             return _cache[key]
+        cache_wrapper2.__doc__ = callableobj.__doc__
         return cache_wrapper2
 
     def cache_wrapper3(self, *args):
@@ -64,6 +65,7 @@ def cached(callableobj, keyarg=None):
             #print 'miss'
             _cache[args] = callableobj(self, *args)
         return _cache[args]
+    cache_wrapper3.__doc__ = callableobj.__doc__
     return cache_wrapper3
 
 def clear_cache(obj, funcname):
@@ -122,10 +124,11 @@ class iclassmethod(object):
 
 def timed(f):
     def wrap(*args, **kwargs):
-        t = clock()
-        #for i in range(100):
+        t = time()
+        c = clock()
         res = f(*args, **kwargs)
-        print '%s time: %.9f' % (f.__name__, clock() - t)
+        print '%s clock: %.9f / time: %.9f' % (f.__name__,
+                                               clock() - c, time() - t)
         return res
     return wrap
 

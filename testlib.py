@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+# license: General Public License version 2 - http://www.gnu.org/licenses
 """Run tests.
 
 This will find all modules whose name match a given prefix in the test
@@ -7,21 +10,18 @@ additional facilities.
 
 Command line options:
 
- -v: verbose -- run tests in verbose mode with output to stdout
- -q: quiet   -- don't print anything except if a test fails
- -t: testdir -- directory where the tests will be found
- -x: exclude -- add a test to exclude
- -p: profile -- profiled execution
- -c: capture -- capture standard out/err during tests
- -d: dbc     -- enable design-by-contract
- -m: match   -- only run test matching the tag pattern which follow
+ -v  verbose -- run tests in verbose mode with output to stdout
+ -q  quiet   -- don't print anything except if a test fails
+ -t  testdir -- directory where the tests will be found
+ -x  exclude -- add a test to exclude
+ -p  profile -- profiled execution
+ -c  capture -- capture standard out/err during tests
+ -d  dbc     -- enable design-by-contract
+ -m  match   -- only run test matching the tag pattern which follow
 
 If no non-option arguments are present, prefixes used are 'test',
 'regrtest', 'smoketest' and 'unittest'.
 
-:copyright: 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
-:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
-:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 # modified copy of some functions from test/regrtest.py from PyXml
@@ -46,6 +46,7 @@ import warnings
 from compiler.consts import CO_GENERATOR
 from ConfigParser import ConfigParser
 from itertools import dropwhile
+from functools import wraps
 
 try:
     from test import test_support
@@ -81,10 +82,11 @@ __unittest = 1
 def with_tempdir(callable):
     """A decorator ensuring no temporary file left when the function return
     Work only for temporary file create with the tempfile module"""
+    @wraps(callable)
     def proxy(*args, **kargs):
 
         old_tmpdir = tempfile.gettempdir()
-        new_tmpdir = tempfile.mkdtemp("-logilab-common-testlib","temp-dir-")
+        new_tmpdir = tempfile.mkdtemp(prefix="temp-lgc-")
         tempfile.tempdir = new_tmpdir
         try:
             return callable(*args, **kargs)
@@ -95,6 +97,26 @@ def with_tempdir(callable):
                 tempfile.tempdir = old_tmpdir
     return proxy
 
+def in_tempdir(callable):
+    """A decorator moving the enclosed function inside the tempfile.tempfdir
+    """
+    @wraps(callable)
+    def proxy(*args, **kargs):
+
+        old_cwd = os.getcwd()
+        os.chdir(tempfile.tempdir)
+        try:
+            return callable(*args, **kargs)
+        finally:
+            os.chdir(old_cwd)
+    return proxy
+
+def within_tempdir(callable):
+    """A decorator run the enclosed function inside a tmpdir removed after execution
+    """
+    proxy = with_tempdir(in_tempdir(callable))
+    proxy.__name__ = callable.__name__
+    return proxy
 
 def run_tests(tests, quiet, verbose, runner=None, capture=0):
     """Execute a list of tests.
@@ -717,7 +739,7 @@ Examples:
                     self.printonly = re.compile(value)
                 if opt in ('-s', '--skip'):
                     self.skipped_patterns = [pat.strip() for pat in
-                        value.split(', ')]
+                                             value.split(', ')]
                 if opt == '--color':
                     self.colorize = True
                 if opt in ('-m', '--match'):
@@ -993,9 +1015,9 @@ class TestCase(unittest.TestCase):
     # instantiated for each test run)
     datadir = classproperty(cached(datadir))
 
-    def datapath(cls, fname):
+    def datapath(cls, *fname):
         """joins the object's datadir and `fname`"""
-        return osp.join(cls.datadir, fname)
+        return osp.join(cls.datadir, *fname)
     datapath = classmethod(datapath)
 
     def set_description(self, descr):

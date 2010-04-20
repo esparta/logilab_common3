@@ -30,34 +30,15 @@ sys.modules.pop('__pkginfo__', None)
 from __pkginfo__ import modname, version, license, short_desc, long_desc, \
      web, author, author_email
 # import optional features
-try:
-    from __pkginfo__ import distname
-except ImportError:
-    distname = modname
-try:
-    from __pkginfo__ import scripts
-except ImportError:
-    scripts = []
-try:
-    from __pkginfo__ import data_files
-except ImportError:
-    data_files = None
-try:
-    from __pkginfo__ import subpackage_of
-except ImportError:
-    subpackage_of = None
-try:
-    from __pkginfo__ import include_dirs
-except ImportError:
-    include_dirs = []
-try:
-    from __pkginfo__ import ext_modules
-except ImportError:
-    ext_modules = None
-try:
-    from __pkginfo__ import install_requires
-except ImportError:
-    install_requires = None
+import __pkginfo__
+distname = getattr(__pkginfo__, 'distname', modname)
+scripts = getattr(__pkginfo__, 'scripts', [])
+data_files = getattr(__pkginfo__, 'data_files', None)
+subpackage_of = getattr(__pkginfo__, 'subpackage_of', None)
+include_dirs = getattr(__pkginfo__, 'include_dirs', [])
+ext_modules = getattr(__pkginfo__, 'ext_modules', None)
+install_requires = getattr(__pkginfo__, 'install_requires', None)
+dependency_links = getattr(__pkginfo__, 'dependency_links', [])
 
 STD_BLACKLIST = ('CVS', '.svn', '.hg', 'debian', 'dist', 'build')
 
@@ -169,19 +150,12 @@ class MyInstallLib(install_lib.install_lib):
 
 def install(**kwargs):
     """setup entry point"""
-    try:
-        if USE_SETUPTOOLS:
+    if USE_SETUPTOOLS:
+        if '--force-manifest' in sys.argv:
             sys.argv.remove('--force-manifest')
-    except:
-        pass
-    try:
-        if not USE_SETUPTOOLS:
-            # install-layout option was introduced in 2.5.3-1~exp1
-            if sys.versioninfo < (2, 5, 4):
-                sys.argv.remove('--install-layout=deb')
-                print "W: remove '--install-layout=deb' option"
-    except:
-        pass
+    # install-layout option was introduced in 2.5.3-1~exp1
+    elif sys.version_info < (2, 5, 4) and '--install-layout=deb' in sys.argv:
+        sys.argv.remove('--install-layout=deb')
     if subpackage_of:
         package = subpackage_of + '.' + modname
         kwargs['package_dir'] = {package : '.'}
@@ -193,6 +167,7 @@ def install(**kwargs):
         packages = [modname] + get_packages(os.getcwd(), modname)
     if USE_SETUPTOOLS and install_requires:
         kwargs['install_requires'] = install_requires
+        kwargs['dependency_links'] = dependency_links
     kwargs['packages'] = packages
     return setup(name = distname,
                  version = version,
