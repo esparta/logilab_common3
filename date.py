@@ -14,7 +14,7 @@
 # details.
 #
 # You should have received a copy of the GNU Lesser General Public License along
-# with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+# with logilab-common.  If not, see <http://www.gnu.org/licenses/>.
 """Date manipulation helper functions.
 
 
@@ -179,7 +179,7 @@ def date_range(begin, end, incday=None, incmonth=None):
                     date as parameter, and returning True if the date
                     should be included.
 
-    When using mx datetime, you should *NOT* use incmonth argument, use insteazd
+    When using mx datetime, you should *NOT* use incmonth argument, use instead
     oneDay, oneHour, oneMinute, oneSecond, oneWeek or endOfMonth (to enumerate
     months) as `incday` argument
     """

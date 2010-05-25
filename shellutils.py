@@ -14,7 +14,7 @@
 # details.
 #
 # You should have received a copy of the GNU Lesser General Public License along
-# with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+# with logilab-common.  If not, see <http://www.gnu.org/licenses/>.
 """shell/term utilities, useful to write some python scripts instead of shell
 scripts.
 """
@@ -305,7 +305,6 @@ class ProgressBar(object):
     def refresh(self):
         """Refresh the progression bar display."""
         self._stream.write(self._fstr % ('.' * min(self._progress, self._size)) )
-        draw_text = False
         if self._last_text_write_size or self._current_text:
             template = ' %%-%is' % (self._last_text_write_size)
             text = self._current_text

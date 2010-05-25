@@ -14,7 +14,7 @@
 # details.
 #
 # You should have received a copy of the GNU Lesser General Public License along
-# with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+# with logilab-common.  If not, see <http://www.gnu.org/licenses/>.
 """Classes to handle advanced configuration in simple to complex applications.
 
 Allows to load the configuration from a file or from command line
@@ -481,8 +481,8 @@ class OptionsManagerMixIn(object):
 
     def add_optik_option(self, provider, optikcontainer, opt, optdict):
         if 'inputlevel' in optdict:
-            warn('"inputlevel" in option dictionary is deprecated, use "level"',
-                 DeprecationWarning)
+            warn('"inputlevel" in option dictionary for %s is deprecated, use'
+                 '"level"' % opt, DeprecationWarning)
             optdict['level'] = optdict.pop('inputlevel')
         args, optdict = self.optik_option(provider, opt, optdict)
         option = optikcontainer.add_option(*args, **optdict)
@@ -730,7 +730,7 @@ class OptionsManagerMixIn(object):
     @property
     def _config_parser(self):
         msg ='"_config_parser" attribute has been renamed to "cfgfile_parser"'
-        warn(msg, DeprecationWarning)
+        warn(msg, DeprecationWarning, stacklevel=2)
         return self.cfgfile_parser
 
 
