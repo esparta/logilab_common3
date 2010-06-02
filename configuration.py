@@ -481,8 +481,8 @@ class OptionsManagerMixIn(object):
 
     def add_optik_option(self, provider, optikcontainer, opt, optdict):
         if 'inputlevel' in optdict:
-            warn('"inputlevel" in option dictionary is deprecated, use "level"',
-                 DeprecationWarning)
+            warn('"inputlevel" in option dictionary for %s is deprecated, use'
+                 '"level"' % opt, DeprecationWarning)
             optdict['level'] = optdict.pop('inputlevel')
         args, optdict = self.optik_option(provider, opt, optdict)
         option = optikcontainer.add_option(*args, **optdict)
@@ -573,7 +573,8 @@ class OptionsManagerMixIn(object):
         self._monkeypatch_expand_default()
         try:
             optparse.generate_manpage(self.cmdline_parser, pkginfo,
-                                 section, stream=stream or sys.stdout)
+                                      section, stream=stream or sys.stdout,
+                                      level=self._maxlevel)
         finally:
             self._unmonkeypatch_expand_default()
 
@@ -730,7 +731,7 @@ class OptionsManagerMixIn(object):
     @property
     def _config_parser(self):
         msg ='"_config_parser" attribute has been renamed to "cfgfile_parser"'
-        warn(msg, DeprecationWarning)
+        warn(msg, DeprecationWarning, stacklevel=2)
         return self.cfgfile_parser
 
 
@@ -1068,7 +1069,7 @@ def read_old_config(newconfig, changes, configfile):
             newconfig[optname] = newvalue
             done.add(optname)
     for optname, optdef in newconfig.options:
-        if not optname in done:
+        if optdef.get('type') and not optname in done:
             newconfig.set_option(optname, oldconfig[optname], optdict=optdef)
 
 

@@ -33,7 +33,7 @@ try:
     from mx.DateTime import RelativeDateTime, Date, DateTimeType
 except ImportError:
     from warnings import warn
-    warn("mxDateTime not found, endsOfMonth won't be available")
+    warn("mxDateTime not found, endOfMonth won't be available")
     endOfMonth = None
     DateTimeType = datetime
 else:
@@ -166,7 +166,10 @@ def nb_open_days(start, end):
     open_days = weeks * 5 + plus
     nb_week_holidays = len([x for x in get_national_holidays(start, end+step)
                             if weekday(x) < 5 and x < end])
-    return open_days - nb_week_holidays
+    open_days -= nb_week_holidays
+    if open_days < 0:
+        return 0
+    return open_days
 
 def date_range(begin, end, incday=None, incmonth=None):
     """yields each date between begin and end
@@ -179,7 +182,7 @@ def date_range(begin, end, incday=None, incmonth=None):
                     date as parameter, and returning True if the date
                     should be included.
 
-    When using mx datetime, you should *NOT* use incmonth argument, use insteazd
+    When using mx datetime, you should *NOT* use incmonth argument, use instead
     oneDay, oneHour, oneMinute, oneSecond, oneWeek or endOfMonth (to enumerate
     months) as `incday` argument
     """
