@@ -60,8 +60,14 @@ import warnings
 from compiler.consts import CO_GENERATOR
 from ConfigParser import ConfigParser
 from itertools import dropwhile
-from functools import wraps
-
+try:
+    from functools import wraps
+except ImportError:
+    def wraps(wrapped):
+        def proxy(callable):
+            callable.__name__ = wrapped.__name__
+            return callable
+        return proxy
 try:
     from test import test_support
 except ImportError:
@@ -1448,11 +1454,9 @@ succeeded test into", osp.join(os.getcwd(),FILE_RESTART)
         """
         try:
             from xml.etree.ElementTree import fromstring
-            self._assertETXMLWellFormed(xml_string, fromstring, msg)
         except ImportError:
-            raise
-            stream = StringIO(xml_string)
-            self.assertXMLWellFormed(stream, msg)
+            from elementtree.ElementTree import fromstring
+        self._assertETXMLWellFormed(xml_string, fromstring, msg)
 
     def _assertETXMLWellFormed(self, data, parse, msg=None, context=2):
         """internal function used by /assertXML(String)?WellFormed/ functions
