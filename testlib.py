@@ -78,7 +78,7 @@ except ImportError:
     test_support = TestSupport()
 
 # pylint: disable-msg=W0622
-from logilab.common.compat import set, enumerate, any, sorted
+from logilab.common.compat import set, enumerate, any, sorted, InheritableSet
 # pylint: enable-msg=W0622
 from logilab.common.modutils import load_module_from_name
 from logilab.common.debugger import Debugger, colorize_source
@@ -217,8 +217,8 @@ def run_test(test, verbose, runner=None, capture=0):
         if runner is None:
             runner = SkipAwareTextTestRunner(capture=capture) # verbosity=0)
         return runner.run(suite)
-    except KeyboardInterrupt, v:
-        raise KeyboardInterrupt, v, sys.exc_info()[2]
+    except KeyboardInterrupt:
+        raise
     except:
         # raise
         type, value = sys.exc_info()[:2]
@@ -834,17 +834,14 @@ Examples:
             try:
                 restartfile = open(FILE_RESTART, 'r')
                 try:
-                    try:
-                        succeededtests = list(elem.rstrip('\n\r') for elem in
-                            restartfile.readlines())
-                        removeSucceededTests(self.test, succeededtests)
-                    except Exception, e:
-                        raise e
+                    succeededtests = list(elem.rstrip('\n\r') for elem in
+                                          restartfile.readlines())
+                    removeSucceededTests(self.test, succeededtests)
                 finally:
                     restartfile.close()
-            except Exception ,e:
-                raise "Error while reading \
-succeeded tests into", osp.join(os.getcwd(),FILE_RESTART)
+            except Exception, ex:
+                raise Exception("Error while reading succeeded tests into %s: %s"
+                                % (osp.join(os.getcwd(), FILE_RESTART), ex))
 
         result = self.testRunner.run(self.test)
         # help garbage collection: we want TestSuite, which hold refs to every
@@ -998,7 +995,7 @@ class InnerTest(tuple):
         instance.name = name
         return instance
 
-class Tags(set):
+class Tags(InheritableSet): # 2.4 compat
     """A set of tag able validate an expression"""
 
     def __init__(self, *tags, **kwargs):
@@ -1039,6 +1036,8 @@ class TestCase(unittest.TestCase):
         self._current_test_descr = None
         self._options_ = None
 
+    @classproperty
+    @cached
     def datadir(cls): # pylint: disable-msg=E0213
         """helper attribute holding the standard test's data directory
 
@@ -1048,12 +1047,11 @@ class TestCase(unittest.TestCase):
         return osp.join(osp.dirname(osp.abspath(mod.__file__)), 'data')
     # cache it (use a class method to cache on class since TestCase is
     # instantiated for each test run)
-    datadir = classproperty(cached(datadir))
 
+    @classmethod
     def datapath(cls, *fname):
         """joins the object's datadir and `fname`"""
         return osp.join(cls.datadir, *fname)
-    datapath = classmethod(datapath)
 
     def set_description(self, descr):
         """sets the current test's description.
@@ -1175,19 +1173,16 @@ class TestCase(unittest.TestCase):
                     try:
                         restartfile = open(FILE_RESTART, 'a')
                         try:
-                            try:
-                                descr = '.'.join((self.__class__.__module__,
-                                    self.__class__.__name__,
-                                    self._testMethodName))
-                                restartfile.write(descr+os.linesep)
-                            except Exception, e:
-                                raise e
+                            descr = '.'.join((self.__class__.__module__,
+                                              self.__class__.__name__,
+                                              self._testMethodName))
+                            restartfile.write(descr+os.linesep)
                         finally:
                             restartfile.close()
-                    except Exception, e:
+                    except Exception, ex:
                         print >> sys.__stderr__, "Error while saving \
 succeeded test into", osp.join(os.getcwd(),FILE_RESTART)
-                        raise e
+                        raise ex
                 result.addSuccess(self)
         finally:
             # if result.cvg:
@@ -1274,29 +1269,32 @@ succeeded test into", osp.join(os.getcwd(),FILE_RESTART)
         msg = msg or 'test was skipped'
         raise InnerTestSkipped(msg)
 
-    def assertIn(self, object, set):
+    def assertIn(self, object, set, msg=None):
         """assert <object> is in <set>
 
         :param object: a Python Object
         :param set: a Python Container
+        :param msg: custom message (String) in case of failure
         """
-        self.assert_(object in set, "%s not in %s" % (object, set))
+        self.assert_(object in set, msg or "%s not in %s" % (object, set))
 
-    def assertNotIn(self, object, set):
+    def assertNotIn(self, object, set, msg=None):
         """assert <object> is not in <set>
 
         :param object: a Python Object
         :param set: the Python container to contain <object>
+        :param msg: custom message (String) in case of failure
         """
-        self.assert_(object not in set, "%s in %s" % (object, set))
+        self.assert_(object not in set, msg or "%s in %s" % (object, set))
 
-    def assertDictEquals(self, dict1, dict2):
+    def assertDictEquals(self, dict1, dict2, msg=None):
         """compares two dicts
 
         If the two dict differ, the first difference is shown in the error
         message
         :param dict1: a Python Dictionary
         :param dict2: a Python Dictionary
+        :param msg: custom message (String) in case of failure
         """
         dict1 = dict(dict1)
         msgs = []
@@ -1310,10 +1308,11 @@ succeeded test into", osp.join(os.getcwd(),FILE_RESTART)
                 msgs.append('missing %r key' % key)
         if dict1:
             msgs.append('dict2 is lacking %r' % dict1)
-        if msgs:
+        if msg:
+            self.failureException(msg)
+        elif msgs:
             self.fail('\n'.join(msgs))
     assertDictEqual = assertDictEquals
-
 
     def assertUnorderedIterableEquals(self, got, expected, msg=None):
         """compares two iterable and shows difference between both
@@ -1722,7 +1721,6 @@ succeeded test into", osp.join(os.getcwd(),FILE_RESTART)
         :param prec: a Float describing the precision
         :param msg: a String for a custom message
         """
-
         if msg is None:
             msg = "%r != %r" % (obj, other)
         self.assert_(math.fabs(obj - other) < prec, msg)
@@ -1752,7 +1750,7 @@ succeeded test into", osp.join(os.getcwd(),FILE_RESTART)
                 excName = excClass.__name__
             else:
                 excName = str(excClass)
-            raise self.failureException, "%s not raised" % excName
+            raise self.failureException("%s not raised" % excName)
 
     assertRaises = failUnlessRaises
 

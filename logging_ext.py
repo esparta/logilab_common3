@@ -16,13 +16,8 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with logilab-common.  If not, see <http://www.gnu.org/licenses/>.
+"""Extends the logging module from the standard library."""
 
-"""Extends the logging module from the standard library.
-
-
-
-
-"""
 __docformat__ = "restructuredtext en"
 
 import os
@@ -77,7 +72,7 @@ class ColorFormatter(logging.Formatter):
         else:
             for cf in self.colorfilters:
                 color = cf(record)
-                if color: 
+                if color:
                     return colorize_ansi(msg, color)
         return msg
 
@@ -103,7 +98,7 @@ LOG_FORMAT = '%(asctime)s - (%(name)s) %(levelname)s: %(message)s'
 LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 def init_log(debug=False, syslog=False, logthreshold=None, logfile=None,
-             logformat=LOG_FORMAT, logdateformat=LOG_DATE_FORMAT,
+             logformat=LOG_FORMAT, logdateformat=LOG_DATE_FORMAT, fmt=None,
              rotation_parameters=None):
     """init the log service"""
     if os.environ.get('APYCOT_ROOT'):
@@ -125,12 +120,15 @@ def init_log(debug=False, syslog=False, logthreshold=None, logfile=None,
                     handler = logging.FileHandler(logfile)
                 else:
                     from logging.handlers import TimedRotatingFileHandler
-                    handler = TimedRotatingFileHandler(logfile, 
+                    handler = TimedRotatingFileHandler(logfile,
                                                        **rotation_parameters)
             except IOError:
                 handler = logging.StreamHandler()
         if logthreshold is None:
-            logthreshold = logging.ERROR
+            if debug:
+                logthreshold = logging.DEBUG
+            else:
+                logthreshold = logging.ERROR
         elif isinstance(logthreshold, basestring):
             logthreshold = getattr(logging, THRESHOLD_MAP.get(logthreshold,
                                                               logthreshold))
@@ -149,7 +147,7 @@ def init_log(debug=False, syslog=False, logthreshold=None, logfile=None,
             if 'kick' in record.message:
                 return 'red'
         fmt.colorfilters.append(col_fact)
-    else:
+    elif fmt is None:
         fmt = logging.Formatter(logformat, logdateformat)
     handler.setFormatter(fmt)
     return handler
