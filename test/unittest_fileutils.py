@@ -18,15 +18,16 @@
 """unit tests for logilab.common.fileutils"""
 
 import sys, os, tempfile, shutil
+from stat import S_IWRITE
 from os.path import join
 
-from logilab.common.testlib import TestCase, unittest_main
+from logilab.common.testlib import TestCase, unittest_main, unittest
 
 from logilab.common.fileutils import *
 
-
-DATA_DIR = 'data'
+DATA_DIR = join(os.path.abspath(os.path.dirname(__file__)), 'data')
 NEWLINES_TXT = join(DATA_DIR,'newlines.txt')
+
 
 class FirstleveldirectoryTC(TestCase):
 
@@ -71,7 +72,7 @@ class ExportTC(TestCase):
         os.mkdir(self.tempdir)
 
     def test(self):
-        export('data', self.tempdir, verbose=0)
+        export(DATA_DIR, self.tempdir, verbose=0)
         self.assert_(exists(join(self.tempdir, '__init__.py')))
         self.assert_(exists(join(self.tempdir, 'sub')))
         self.assert_(not exists(join(self.tempdir, '__init__.pyc')))
@@ -82,8 +83,8 @@ class ExportTC(TestCase):
 
 class ProtectedFileTC(TestCase):
     def setUp(self):
-        self.rpath = 'data/write_protected_file.txt'
-        self.rwpath = 'data/normal_file.txt'
+        self.rpath = join(DATA_DIR, 'write_protected_file.txt')
+        self.rwpath = join(DATA_DIR, 'normal_file.txt')
         # Make sure rpath is not writable !
         os.chmod(self.rpath, 33060)
         # Make sure rwpath is writable !
@@ -92,32 +93,43 @@ class ProtectedFileTC(TestCase):
     def test_mode_change(self):
         """tests that mode is changed when needed"""
         # test on non-writable file
-        self.assert_(not os.access(self.rpath, os.W_OK))
+        #self.assert_(not os.access(self.rpath, os.W_OK))
+        self.assert_(not os.stat(self.rpath).st_mode & S_IWRITE)
         wp_file = ProtectedFile(self.rpath, 'w')
+        self.assert_(os.stat(self.rpath).st_mode & S_IWRITE)
         self.assert_(os.access(self.rpath, os.W_OK))
         # test on writable-file
+        self.assert_(os.stat(self.rwpath).st_mode & S_IWRITE)
         self.assert_(os.access(self.rwpath, os.W_OK))
         wp_file = ProtectedFile(self.rwpath, 'w')
+        self.assert_(os.stat(self.rwpath).st_mode & S_IWRITE)
         self.assert_(os.access(self.rwpath, os.W_OK))
 
     def test_restore_on_close(self):
         """tests original mode is restored on close"""
         # test on non-writable file
-        self.assert_(not os.access(self.rpath, os.W_OK))
+        #self.assert_(not os.access(self.rpath, os.W_OK))
+        self.assert_(not os.stat(self.rpath).st_mode & S_IWRITE)
         ProtectedFile(self.rpath, 'w').close()
-        self.assert_(not os.access(self.rpath, os.W_OK))
+        #self.assert_(not os.access(self.rpath, os.W_OK))
+        self.assert_(not os.stat(self.rpath).st_mode & S_IWRITE)
         # test on writable-file
         self.assert_(os.access(self.rwpath, os.W_OK))
+        self.assert_(os.stat(self.rwpath).st_mode & S_IWRITE)
         ProtectedFile(self.rwpath, 'w').close()
         self.assert_(os.access(self.rwpath, os.W_OK))
+        self.assert_(os.stat(self.rwpath).st_mode & S_IWRITE)
 
     def test_mode_change_on_append(self):
         """tests that mode is changed when file is opened in 'a' mode"""
-        self.assert_(not os.access(self.rpath, os.W_OK))
+        #self.assert_(not os.access(self.rpath, os.W_OK))
+        self.assert_(not os.stat(self.rpath).st_mode & S_IWRITE)
         wp_file = ProtectedFile(self.rpath, 'a')
         self.assert_(os.access(self.rpath, os.W_OK))
+        self.assert_(os.stat(self.rpath).st_mode & S_IWRITE)
         wp_file.close()
-        self.assert_(not os.access(self.rpath, os.W_OK))
+        #self.assert_(not os.access(self.rpath, os.W_OK))
+        self.assert_(not os.stat(self.rpath).st_mode & S_IWRITE)
 
 
 from logilab.common.testlib import DocTest

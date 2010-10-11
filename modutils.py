@@ -31,8 +31,9 @@ __docformat__ = "restructuredtext en"
 
 import sys
 import os
-from os.path import walk, splitext, join, abspath, isdir, dirname, exists
+from os.path import splitext, join, abspath, isdir, dirname, exists, basename
 from imp import find_module, load_module, C_BUILTIN, PY_COMPILED, PKG_DIRECTORY
+from distutils.sysconfig import get_config_var, get_python_lib, get_python_version
 
 try:
     import zipimport
@@ -41,16 +42,23 @@ except ImportError:
 
 ZIPFILE = object()
 
-from logilab.common import STD_BLACKLIST
+from logilab.common import STD_BLACKLIST, _handle_blacklist
 
+# Notes about STD_LIB_DIR
+# Consider arch-specific installation for STD_LIB_DIR definition
+# :mod:`distutils.sysconfig` contains to much hardcoded values to rely on
+#
+# :see: `Problems with /usr/lib64 builds <http://bugs.python.org/issue1294959>`_
+# :see: `FHS <http://www.pathname.com/fhs/pub/fhs-2.3.html#LIBLTQUALGTALTERNATEFORMATESSENTIAL>`_
 if sys.platform.startswith('win'):
     PY_SOURCE_EXTS = ('py', 'pyw')
     PY_COMPILED_EXTS = ('dll', 'pyd')
-    STD_LIB_DIR = join(sys.prefix, 'lib')
+    STD_LIB_DIR = get_python_lib(standard_lib=1)
 else:
     PY_SOURCE_EXTS = ('py',)
     PY_COMPILED_EXTS = ('so',)
-    STD_LIB_DIR = join(sys.prefix, 'lib', 'python%s' % sys.version[:3])
+    # extend lib dir with some arch-dependant paths
+    STD_LIB_DIR = join(get_config_var("LIBDIR"), "python%s" % get_python_version())
 
 BUILTIN_MODULES = dict(zip(sys.builtin_module_names,
                            [1]*len(sys.builtin_module_names)))
@@ -138,7 +146,7 @@ def load_module_from_modpath(parts, path=None, use_sys=1):
     prevmodule = None
     for part in parts:
         modpath.append(part)
-        curname = ".".join(modpath)
+        curname = '.'.join(modpath)
         module = None
         if len(modpath) != len(parts):
             # even with use_sys=False, should try to get outer packages from sys.modules
@@ -148,9 +156,9 @@ def load_module_from_modpath(parts, path=None, use_sys=1):
             module = load_module(curname, mp_file, mp_filename, mp_desc)
         if prevmodule:
             setattr(prevmodule, part, module)
-        _file = getattr(module, "__file__", "")
+        _file = getattr(module, '__file__', '')
         if not _file and len(modpath) != len(parts):
-            raise ImportError("no module in %s" % ".".join(parts[len(modpath):]) )
+            raise ImportError('no module in %s' % '.'.join(parts[len(modpath):]) )
         path = [dirname( _file )]
         prevmodule = module
     return module
@@ -341,7 +349,6 @@ def get_module_part(dotted_name, context_file=None):
     return dotted_name
 
 
-
 def get_modules(package, src_directory, blacklist=STD_BLACKLIST):
     """given a package directory return a list of all available python
     modules in the package and its subpackages
@@ -363,31 +370,21 @@ def get_modules(package, src_directory, blacklist=STD_BLACKLIST):
       the list of all available python modules in the package and its
       subpackages
     """
-    def func(modules, directory, fnames):
-        """walk handler"""
-        # remove files/directories in the black list
-        for norecurs in blacklist:
-            try:
-                fnames.remove(norecurs)
-            except ValueError:
-                continue
+    modules = []
+    for directory, dirnames, filenames in os.walk(src_directory):
+        _handle_blacklist(blacklist, dirnames, filenames)
         # check for __init__.py
-        if not '__init__.py' in fnames:
-            while fnames:
-                fnames.pop()
-        elif directory != src_directory:
-            #src = join(directory, file)
+        if not '__init__.py' in filenames:
+            dirnames[:] = ()
+            continue
+        if directory != src_directory:
             dir_package = directory[len(src_directory):].replace(os.sep, '.')
             modules.append(package + dir_package)
-        for filename in fnames:
-            src = join(directory, filename)
-            if isdir(src):
-                continue
+        for filename in filenames:
             if _is_python_file(filename) and filename != '__init__.py':
+                src = join(directory, filename)
                 module = package + src[len(src_directory):-3]
                 modules.append(module.replace(os.sep, '.'))
-    modules = []
-    walk(src_directory, func, modules)
     return modules
 
 
@@ -410,26 +407,17 @@ def get_module_files(src_directory, blacklist=STD_BLACKLIST):
       the list of all available python module's files in the package and
       its subpackages
     """
-    def func(files, directory, fnames):
-        """walk handler"""
-        # remove files/directories in the black list
-        for norecurs in blacklist:
-            try:
-                fnames.remove(norecurs)
-            except ValueError:
-                continue
-        # check for __init__.py
-        if not '__init__.py' in fnames:
-            while fnames:
-                fnames.pop()
-        for filename in fnames:
-            src = join(directory, filename)
-            if isdir(src):
-                continue
-            if _is_python_file(filename):
-                files.append(src)
     files = []
-    walk(src_directory, func, files)
+    for directory, dirnames, filenames in os.walk(src_directory):
+        _handle_blacklist(blacklist, dirnames, filenames)
+        # check for __init__.py
+        if not '__init__.py' in filenames:
+            dirnames[:] = ()
+            continue
+        for filename in filenames:
+            if _is_python_file(filename):
+                src = join(directory, filename)
+                files.append(src)
     return files
 
 

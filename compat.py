@@ -18,6 +18,12 @@
 # with logilab-common.  If not, see <http://www.gnu.org/licenses/>.
 """Wrappers around some builtins introduced in python 2.3, 2.4 and
 2.5, making them available in for earlier versions of python.
+
+See another compatibility snippets from other projects:
+    
+    :mod:`lib2to3.fixes`
+    :mod:`coverage.backward`
+    :mod:`unittest2.compatibility`
 """
 
 from __future__ import generators
@@ -28,8 +34,50 @@ import os
 import sys
 from warnings import warn
 
-import __builtin__
+import __builtin__ as builtins # 2to3 will tranform '__builtin__' to 'builtins'
 
+if sys.version_info < (3, 0):
+    str_to_bytes = str
+    def str_encode(string, encoding):
+        if isinstance(string, unicode):
+            return string.encode(encoding)
+        return str(string)
+else:
+    def str_to_bytes(string):
+        return str.encode(string)
+    # we have to ignore the encoding in py3k to be able to write a string into a
+    # TextIOWrapper or like object (which expect an unicode string)
+    def str_encode(string, encoding):
+        return str(string)
+
+try:
+    callable = callable
+except NameError:# callable removed from py3k
+    import collections
+    def callable(something):
+        return isinstance(something, collections.Callable)
+    del collections
+
+if sys.version_info < (3, 0):
+    raw_input = raw_input
+else:
+    raw_input = input
+
+# Pythons 2 and 3 differ on where to get StringIO
+if sys.version_info < (3, 0):
+    from cStringIO import StringIO
+    FileIO = file
+    BytesIO = StringIO
+else:
+    from io import FileIO, BytesIO, StringIO
+
+# Where do pickles come from?
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
+# Python 2.3 doesn't have `set`
 try:
     set = set
     frozenset = frozenset
@@ -201,7 +249,7 @@ except TypeError:
         key= kargs.pop("key", None)
         #default implementation
         if key is None:
-            return __builtin__.max(*args,**kargs)
+            return builtins.max(*args,**kargs)
 
         for karg in kargs:
             raise TypeError("unexpected keyword argument %s for function max") % karg
@@ -337,4 +385,23 @@ else:
             obj = set.__new__(cls, *new_args)
             obj.__init__(*args, **kwargs)
             return obj
-    
+
+# range or xrange?
+try:
+    range = xrange
+except NameError:
+    range = range
+
+# ConfigParser was renamed to the more-standard configparser
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
+
+try:
+    import json
+except ImportError:
+    try:
+        import simplejson as json
+    except ImportError:
+        json = None
