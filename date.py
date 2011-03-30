@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of logilab-common.
@@ -235,6 +235,19 @@ def todatetime(somedate):
 def datetime2ticks(somedate):
     return timegm(somedate.timetuple()) * 1000
 
+def ticks2datetime(ticks):
+    miliseconds, microseconds = divmod(ticks, 1000)
+    try:
+        return datetime.fromtimestamp(miliseconds)
+    except (ValueError, OverflowError):
+        epoch = datetime.fromtimestamp(0)
+        nb_days, seconds = divmod(int(miliseconds), 86400)
+        delta = timedelta(nb_days, seconds=seconds, microseconds=microseconds)
+        try:
+            return epoch + delta
+        except (ValueError, OverflowError):
+            raise
+
 def days_in_month(somedate):
     return monthrange(somedate.year, somedate.month)[1]
 
@@ -273,7 +286,7 @@ def ustrftime(somedate, fmt='%Y-%m-%d'):
     try:
         return unicode(somedate.strftime(str(fmt)), encoding)
     except ValueError, exc:
-        if '1900' not in exc.args[0]:
+        if somedate.year >= 1900:
             raise
         # datetime is not happy with dates before 1900
         # we try to work around this, assuming a simple
@@ -288,3 +301,9 @@ def ustrftime(somedate, fmt='%Y-%m-%d'):
                            'S': somedate.second})
         fmt = re.sub('%([YmdHMS])', r'%(\1)02d', fmt)
         return unicode(fmt) % fields
+
+def utcdatetime(dt):
+    return datetime(*dt.utctimetuple()[:7])
+
+def utctime(dt):
+    return (dt + dt.utcoffset() + dt.dst()).replace(tzinfo=None)

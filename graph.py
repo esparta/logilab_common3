@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of logilab-common.
@@ -110,14 +110,17 @@ class DotBackend:
         pdot.write(str_encode(self.source, 'utf8'))
         pdot.close()
         if target != 'dot':
-            if mapfile:
-                print '%s -Tcmapx -o%s -T%s %s -o%s' % (self.renderer, mapfile,
-                                                        target, dot_sourcepath, outputfile)
-                subprocess.call('%s -Tcmapx -o%s -T%s %s -o%s' % (self.renderer, mapfile,
-                           target, dot_sourcepath, outputfile), shell=True)
+            if sys.platform == 'win32':
+                use_shell = True
             else:
-                subprocess.call('%s -T%s %s -o%s' % (self.renderer, target,
-                            dot_sourcepath, outputfile), shell=True)
+                use_shell = False
+            if mapfile:
+                subprocess.call([self.renderer,  '-Tcmapx', '-o', mapfile, '-T', target, dot_sourcepath, '-o', outputfile],
+                                shell=use_shell)
+            else:
+                subprocess.call([self.renderer, '-T',  target,
+                                 dot_sourcepath, '-o',  outputfile],
+                                shell=use_shell)
             os.unlink(dot_sourcepath)
         return outputfile
 

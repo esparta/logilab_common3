@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of logilab-common.
@@ -29,6 +29,8 @@ import tempfile
 import time
 import fnmatch
 import errno
+import string
+import random
 from os.path import exists, isdir, islink, basename, join
 
 from logilab.common import STD_BLACKLIST, _handle_blacklist
@@ -433,3 +435,9 @@ def getlogin():
     else:
         return os.environ['USERNAME']
 
+def generate_password(length=8, vocab=string.ascii_letters + string.digits):
+    """dumb password generation function"""
+    pwd = ''
+    for i in xrange(length):
+        pwd += random.choice(vocab)
+    return pwd
